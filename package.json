@@ -1,0 +1,11 @@
+{
+  "name": "nextjs-nestjs",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "build": "bun run --filter '*' build",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:api": "bun run --cwd apps/api start:dev"
+  }
+}
