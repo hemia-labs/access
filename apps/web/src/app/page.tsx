@@ -1,4 +1,4 @@
-import { FileText, Users, Clock, CheckCircle2 } from "lucide-react";
+import { Building2, KeyRound, PackageCheck, ShieldCheck } from "lucide-react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -9,53 +9,74 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  getOrganizations,
+  getPermissions,
+  getProducts,
+  getRoles,
+  type AccessOrganization,
+} from "@/lib/access-api";
 
-const docs = [
-  { name: "Política de privacidad", owner: "Ana Ruiz", status: "Publicado", tone: "ok" },
-  { name: "Contrato proveedor Q3", owner: "Luis Gómez", status: "Revisión", tone: "warn" },
-  { name: "Manual de onboarding", owner: "María Paz", status: "Borrador", tone: "muted" },
-  { name: "Acuerdo NDA cliente X", owner: "Jorge Díaz", status: "Archivado", tone: "danger" },
-];
+async function loadDashboard() {
+  try {
+    const [organizations, products, roles, permissions] = await Promise.all([
+      getOrganizations(),
+      getProducts(),
+      getRoles(),
+      getPermissions(),
+    ]);
+    return { organizations, products, roles, permissions, error: null };
+  } catch (error) {
+    return {
+      organizations: [] as AccessOrganization[],
+      products: [],
+      roles: [],
+      permissions: [],
+      error: error instanceof Error ? error.message : "Access API unavailable",
+    };
+  }
+}
 
-const badge: Record<string, string> = {
-  ok: "bg-emerald-50 text-emerald-700",
-  warn: "bg-amber-50 text-amber-700",
-  muted: "bg-muted text-muted-foreground",
-  danger: "bg-red-50 text-red-700",
-};
+export default async function Home() {
+  const { organizations, products, roles, permissions, error } = await loadDashboard();
 
-export default function Home() {
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Access API no disponible o sin credenciales: {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Documentos" value="1,284" icon={<FileText className="size-5" />} />
-        <StatCard label="En revisión" value="37" tone="violet" icon={<Clock className="size-5" />} />
-        <StatCard label="Publicados" value="912" icon={<CheckCircle2 className="size-5" />} />
-        <StatCard label="Colaboradores" value="48" icon={<Users className="size-5" />} />
+        <StatCard label="Organizations" value={String(organizations.length)} icon={<Building2 className="size-5" />} />
+        <StatCard label="Products" value={String(products.length)} icon={<PackageCheck className="size-5" />} />
+        <StatCard label="Roles" value={String(roles.length)} icon={<ShieldCheck className="size-5" />} />
+        <StatCard label="Permissions" value={String(permissions.length)} icon={<KeyRound className="size-5" />} />
       </div>
 
       <div className="rounded-lg border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-base font-semibold">Documentos recientes</h2>
-          <span className="text-xs text-muted-foreground">{docs.length} resultados</span>
+          <h2 className="text-base font-semibold">Organizations</h2>
+          <span className="text-xs text-muted-foreground">{organizations.length} resultados</span>
         </div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="px-4 text-xs font-semibold text-muted-foreground">Nombre</TableHead>
-              <TableHead className="px-4 text-xs font-semibold text-muted-foreground">Responsable</TableHead>
+              <TableHead className="px-4 text-xs font-semibold text-muted-foreground">Codigo</TableHead>
+              <TableHead className="px-4 text-xs font-semibold text-muted-foreground">Tipo</TableHead>
               <TableHead className="px-4 text-xs font-semibold text-muted-foreground">Estado</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {docs.map((d) => (
-              <TableRow key={d.name}>
-                <TableCell className="px-4 py-3 font-medium">{d.name}</TableCell>
-                <TableCell className="px-4 py-3 text-muted-foreground">{d.owner}</TableCell>
+            {organizations.map((organization) => (
+              <TableRow key={organization.id}>
+                <TableCell className="px-4 py-3 font-medium">{organization.name}</TableCell>
+                <TableCell className="px-4 py-3 text-muted-foreground">{organization.code}</TableCell>
+                <TableCell className="px-4 py-3 text-muted-foreground">{organization.type}</TableCell>
                 <TableCell className="px-4 py-3">
-                  <Badge variant="secondary" className={badge[d.tone]}>
-                    {d.status}
-                  </Badge>
+                  <Badge variant="secondary">{organization.status}</Badge>
                 </TableCell>
               </TableRow>
             ))}

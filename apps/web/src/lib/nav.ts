@@ -1,10 +1,21 @@
-import { LayoutDashboard, FileText, Users, Settings } from "lucide-react";
+import {
+  Building2,
+  KeyRound,
+  LayoutDashboard,
+  PackageCheck,
+  ShieldCheck,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
 export const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/documents", label: "Documentos", icon: FileText },
-  { href: "/team", label: "Equipo", icon: Users },
-  { href: "/settings", label: "Ajustes", icon: Settings },
+  { href: "/organizations", label: "Organizations", icon: Building2 },
+  { href: "/memberships", label: "Memberships", icon: Users },
+  { href: "/invitations", label: "Invitations", icon: UserPlus },
+  { href: "/products", label: "Products", icon: PackageCheck },
+  { href: "/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/permissions", label: "Permissions", icon: KeyRound },
 ];
 
 export function labelFor(pathname: string) {

@@ -19,7 +19,7 @@ export function AppSidebar() {
       )}
     >
       <div className="flex h-topbar items-center gap-2 px-4">
-        {!collapsed && <span className="flex-1 truncate text-lg font-bold">Nextjs Template</span>}
+        {!collapsed && <span className="flex-1 truncate text-lg font-bold">Hemia Access</span>}
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
@@ -54,7 +54,7 @@ export function AppSidebar() {
       </nav>
       <div className="m-4 flex items-center gap-2 rounded-lg bg-white/5 p-3 text-xs">
         <span className="size-2 shrink-0 rounded-full bg-emerald-400" />
-        {!collapsed && <span className="truncate text-blue-50/95">Sistema operativo</span>}
+        {!collapsed && <span className="truncate text-blue-50/95">Access API</span>}
       </div>
     </aside>
   );

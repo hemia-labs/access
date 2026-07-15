@@ -12,7 +12,7 @@ export function AppTopbar() {
     <header className="flex h-topbar shrink-0 items-center gap-4 border-b border-border bg-card px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col">
         <h1 className="text-lg font-semibold">{title}</h1>
-        <p className="text-xs text-muted-foreground">Resumen del workspace</p>
+        <p className="text-xs text-muted-foreground">Administracion global de acceso</p>
       </div>
       <div className="ml-auto flex items-center gap-2">
         <div className="relative hidden sm:block">

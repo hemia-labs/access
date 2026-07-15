@@ -1,83 +1,43 @@
-# API (NestJS)
+# Hemia Access API
 
-Backend del monorepo `nextjs-nestjs`. Plantilla NestJS + TypeORM + PostgreSQL.
-La base de datos viene **desactivada** hasta que la configures (ver abajo).
+Backend NestJS de Hemia Access. Administra organizations, memberships, roles/permisos globales, invitations, product access, context tokens, auditoria y outbox.
 
-## Stack
+Los JWT de usuario se autorizan con memberships y roles activos. Los tokens opacos de servicio se introspectan contra Identity y se autorizan por scope; Console usa el cliente `console-access-admin`.
 
-- **NestJS 11** — framework HTTP (módulos, controllers, services).
-- **TypeORM** — ORM + migraciones contra PostgreSQL.
-- **PostgreSQL** — base de datos (timezone `America/Mexico_City`).
-- **@nestjs/config** — configuración tipada por namespace (`registerAs`).
-- **class-validator / class-transformer** — validación de DTOs vía `ValidationPipe` global.
-- **TypeScript**, **Jest** (tests), **ESLint + Prettier**.
-- Gestor de paquetes: **bun**.
+Access no ejecuta login de usuario. Recibe tokens emitidos por Hemia ID o Customer Registry, los valida contra JWKS allowlisted y resuelve contexto organizacional.
 
-## Estructura
+## Configuracion
 
-```
-apps/api/
-  data-source.ts                 # DataSource para el CLI de migraciones
-  src/
-    main.ts                      # bootstrap: ValidationPipe global + CORS, escucha PORT (3001)
-    app.module.ts                # módulo raíz (DatabaseModule/WidgetsModule comentados hasta tener DB)
-    config/
-      database.config.ts         # config namespaced 'database' (registerAs)
-    database/
-      database.module.ts         # TypeOrmModule.forRootAsync, synchronize: false
-      migrations/                # migraciones TypeORM
-    modules/
-      widgets/                   # módulo dummy de ejemplo (controller, service, entity, dtos)
+`src/config/access.config.ts` contiene toda la configuracion de Access, incluida la validacion de tokens entrantes:
+
+```txt
+PORT
+ACCESS_ISSUER
+ACCESS_EXPECTED_AUDIENCE
+ACCESS_TRUSTED_ISSUERS
+IDENTITY_JWKS_URI
+ACCESS_CONTEXT_TOKEN_TTL_SECONDS
+ACCESS_CONTEXT_CACHE_TTL_SECONDS
+ACCESS_JWKS_KEY_KID
+ACCESS_JWKS_PRIVATE_KEY_PATH
+ACCESS_REDIS_*
 ```
 
-## Variables de entorno
+Access no usa `@hemia/auth` ni monta login de browser; solo valida Bearer tokens entrantes contra `ACCESS_TRUSTED_ISSUERS`, `ACCESS_EXPECTED_AUDIENCE` e `IDENTITY_JWKS_URI`.
 
-Copia `.env.example` a `.env` y completa los valores:
-
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_USERNAME=
-DB_PASSWORD=
-DB_DATABASE=
-DB_LOGGING=false
-```
-
-`PORT` opcional (default `3001`). `.env` y `.env.local` están en `.gitignore`.
-
-## Arranque
+## Migraciones y seeds
 
 ```bash
-bun install
-bun run --cwd apps/api start:dev   # watch mode
+bun run migration:run
+bun run seed:run
 ```
 
-Sin DB el servidor levanta igual (responde en `/`). El módulo de datos está apagado.
-
-## Activar la base de datos
-
-1. Completa `.env`.
-2. En `src/app.module.ts` descomenta los imports de `DatabaseModule` y `WidgetsModule`.
-3. Genera y corre la migración:
-
-```bash
-bun run --cwd apps/api migration:generate src/database/migrations/CreateWidgets
-bun run --cwd apps/api migration:run
-```
-
-## Migraciones
-
-```bash
-bun run --cwd apps/api migration:generate src/database/migrations/<Nombre>
-bun run --cwd apps/api migration:run
-bun run --cwd apps/api migration:revert
-```
-
-`synchronize` está en `false`: todo cambio de schema requiere migración.
+No usar `synchronize: true` ni `migrationsRun: true`; las migraciones y seeds son manuales.
 
 ## Tests y build
 
 ```bash
-bun run --cwd apps/api test
-bun run --cwd apps/api build
+bun run test
+bun run test:e2e
+bun run build
 ```

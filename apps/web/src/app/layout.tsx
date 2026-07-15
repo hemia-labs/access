@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Nextjs Template",
-  description: "Workspace de documentación B2B",
+  title: "Hemia Access",
+  description: "Consola de administracion de acceso",
 };
 
 export default function RootLayout({
