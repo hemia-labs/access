@@ -65,7 +65,7 @@ const matrix: Record<string, string[]> = {
     'policy.read',
     'audit.read',
   ],
-  organization_owner: permissions,
+  organization_owner: permissions.filter((permission) => permission !== '*'),
   organization_admin: [
     'organization.read',
     'organization.update',

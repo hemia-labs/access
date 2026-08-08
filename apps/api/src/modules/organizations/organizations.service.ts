@@ -62,7 +62,12 @@ export class OrganizationsService {
           aggregateType: 'organization',
           aggregateId: organization.id,
           actor,
-          data: { organization_id: organization.id, status: organization.status },
+          subject: `organizations/${organization.id}`,
+          data: {
+            organization_id: organization.id,
+            organization_name: organization.name,
+            status: organization.status,
+          },
         });
         return organization;
       });
@@ -142,7 +147,12 @@ export class OrganizationsService {
           aggregateType: 'organization',
           aggregateId: saved.id,
           actor,
-          data: { organization_id: saved.id, status: saved.status },
+          subject: `organizations/${saved.id}`,
+          data: {
+            organization_id: saved.id,
+            organization_name: saved.name,
+            status: saved.status,
+          },
         });
         return saved;
       });
@@ -189,7 +199,12 @@ export class OrganizationsService {
         aggregateType: 'organization',
         aggregateId: saved.id,
         actor,
-        data: { organization_id: saved.id, status: saved.status },
+        subject: `organizations/${saved.id}`,
+        data: {
+          organization_id: saved.id,
+          organization_name: saved.name,
+          status: saved.status,
+        },
       });
       return saved;
     });
@@ -226,7 +241,12 @@ export class OrganizationsService {
         aggregateType: 'organization',
         aggregateId: saved.id,
         actor,
-        data: { organization_id: saved.id, status: saved.status },
+        subject: `organizations/${saved.id}`,
+        data: {
+          organization_id: saved.id,
+          organization_name: saved.name,
+          status: saved.status,
+        },
       });
       return saved;
     });

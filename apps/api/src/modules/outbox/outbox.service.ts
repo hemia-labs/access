@@ -11,6 +11,8 @@ type RecordEventInput = {
   data: Record<string, unknown>;
   correlationId?: string | null;
   causationId?: string | null;
+  traceParent?: string | null;
+  subject?: string | null;
 };
 
 @Injectable()
@@ -24,10 +26,12 @@ export class OutboxService {
         status: 'pending',
         payload: {
           type: input.type,
-          source: 'hemia-access',
+          source: 'urn:hemia:service:hemia-access',
           occurred_at: new Date().toISOString(),
           correlation_id: input.correlationId ?? null,
           causation_id: input.causationId ?? null,
+          trace_parent: input.traceParent ?? null,
+          subject: input.subject ?? null,
           actor: {
             type: 'identity',
             issuer: input.actor.issuer,

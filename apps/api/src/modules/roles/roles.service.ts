@@ -5,6 +5,7 @@ import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
 import { AccessContextCacheService } from '../access-context/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
+import { IdentityReference } from '../identity-references/entities/identity-reference.entity';
 import { Membership } from '../memberships/entities/membership.entity';
 import { OutboxService } from '../outbox/outbox.service';
 import { AssignRoleDto } from './dtos/assign-role.dto';
@@ -108,6 +109,7 @@ export class RolesService {
       membership.contextVersion += 1;
       membership.updatedByIdentityId = actor.identityReferenceId;
       await manager.getRepository(Membership).save(membership);
+      const eventData = await this.roleEventData(manager, membership, actor, [role.code]);
 
       await this.audit.record(manager, {
         organizationId,
@@ -122,13 +124,8 @@ export class RolesService {
         aggregateType: 'membership',
         aggregateId: membershipId,
         actor,
-        data: {
-          organization_id: organizationId,
-          membership_id: membershipId,
-          role_id: role.id,
-          role_code: role.code,
-          context_version: membership.contextVersion,
-        },
+        subject: `organizations/${organizationId}/memberships/${membershipId}`,
+        data: { ...eventData, role_id: role.id, role_code: role.code },
       });
       await this.contextCache.del(this.contextCache.key(membership.identityReferenceId));
 
@@ -160,6 +157,7 @@ export class RolesService {
       membership.contextVersion += 1;
       membership.updatedByIdentityId = actor.identityReferenceId;
       await manager.getRepository(Membership).save(membership);
+      const eventData = await this.roleEventData(manager, membership, actor);
 
       await this.audit.record(manager, {
         organizationId,
@@ -174,12 +172,8 @@ export class RolesService {
         aggregateType: 'membership',
         aggregateId: membershipId,
         actor,
-        data: {
-          organization_id: organizationId,
-          membership_id: membershipId,
-          role_id: roleId,
-          context_version: membership.contextVersion,
-        },
+        subject: `organizations/${organizationId}/memberships/${membershipId}`,
+        data: { ...eventData, role_id: roleId },
       });
       await this.contextCache.del(this.contextCache.key(membership.identityReferenceId));
 
@@ -198,6 +192,42 @@ export class RolesService {
       );
     }
     return role;
+  }
+
+  private async roleEventData(
+    manager: import('typeorm').EntityManager,
+    membership: Membership,
+    actor: AccessActor,
+    fallbackRoleCodes: string[] = [],
+  ) {
+    const identityRepository = manager.getRepository(IdentityReference);
+    const identity = identityRepository
+      ? await identityRepository.findOneBy({ id: membership.identityReferenceId })
+      : null;
+    const repository = manager.getRepository(MembershipRole);
+    const assignments =
+      typeof repository.find === 'function'
+        ? await repository.find({
+            where: { membershipId: membership.id },
+            relations: { role: true },
+          })
+        : [];
+    const roleCodes = assignments
+      .map((assignment) => assignment.role?.code)
+      .filter((code): code is string => Boolean(code));
+
+    return {
+      organization_id: membership.organizationId,
+      membership_id: membership.id,
+      identity_issuer: identity?.issuer ?? actor.issuer,
+      subject_id: identity?.subjectId ?? actor.subjectId,
+      membership_status:
+        membership.status === 'pending' || membership.status === 'expired'
+          ? 'active'
+          : membership.status,
+      role_codes: roleCodes.length ? roleCodes : fallbackRoleCodes,
+      context_version: membership.contextVersion,
+    };
   }
 
   private async findRoleForAssignment(

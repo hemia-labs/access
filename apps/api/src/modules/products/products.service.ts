@@ -8,8 +8,16 @@ import { AuditService } from '../audit/audit.service';
 import { Membership } from '../memberships/entities/membership.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OutboxService } from '../outbox/outbox.service';
-import { CreateProductDto, EnableProductDto, ProductInstanceDto, UpdateProductDto } from './dtos/product.dto';
-import { OrganizationProduct, OrganizationProductStatus } from './entities/organization-product.entity';
+import {
+  CreateProductDto,
+  EnableProductDto,
+  ProductInstanceDto,
+  UpdateProductDto,
+} from './dtos/product.dto';
+import {
+  OrganizationProduct,
+  OrganizationProductStatus,
+} from './entities/organization-product.entity';
 import { OrganizationProductInstance } from './entities/organization-product-instance.entity';
 import { Product } from './entities/product.entity';
 
@@ -54,7 +62,8 @@ export class ProductsService {
     product.name = dto.name ?? product.name;
     product.description = dto.description ?? product.description;
     product.audience = dto.audience ?? product.audience;
-    product.provisioningMode = dto.provisioning_mode ?? product.provisioningMode;
+    product.provisioningMode =
+      dto.provisioning_mode ?? product.provisioningMode;
     product.status = dto.status ?? product.status;
     product.metadata = dto.metadata ?? product.metadata;
     return this.products.save(product);
@@ -68,20 +77,49 @@ export class ProductsService {
     });
   }
 
-  enable(actor: AccessActor, organizationId: string, productCode: string, dto: EnableProductDto) {
-    return this.setProductAccess(actor, organizationId, productCode, 'enable', dto);
+  enable(
+    actor: AccessActor,
+    organizationId: string,
+    productCode: string,
+    dto: EnableProductDto,
+  ) {
+    return this.setProductAccess(
+      actor,
+      organizationId,
+      productCode,
+      'enable',
+      dto,
+    );
   }
 
   suspend(actor: AccessActor, organizationId: string, productCode: string) {
-    return this.setProductAccess(actor, organizationId, productCode, 'suspended', {});
+    return this.setProductAccess(
+      actor,
+      organizationId,
+      productCode,
+      'suspended',
+      {},
+    );
   }
 
   activate(actor: AccessActor, organizationId: string, productCode: string) {
-    return this.setProductAccess(actor, organizationId, productCode, 'enabled', {});
+    return this.setProductAccess(
+      actor,
+      organizationId,
+      productCode,
+      'enabled',
+      {},
+    );
   }
 
   disable(actor: AccessActor, organizationId: string, productCode: string) {
-    return this.setProductAccess(actor, organizationId, productCode, 'disabled', {});
+    return this.setProductAccess(
+      actor,
+      organizationId,
+      productCode,
+      'disabled',
+      {},
+    );
   }
 
   async recordInstance(actor: AccessActor, dto: ProductInstanceDto) {
@@ -90,28 +128,43 @@ export class ProductsService {
         .getRepository(OrganizationProduct)
         .createQueryBuilder('organizationProduct')
         .innerJoinAndSelect('organizationProduct.product', 'product')
+        .innerJoinAndSelect('organizationProduct.organization', 'organization')
         .where('organizationProduct.organization_id = :organizationId', {
           organizationId: dto.organization_id,
         })
-        .andWhere('product.code = :productCode', { productCode: dto.product_code })
+        .andWhere('product.code = :productCode', {
+          productCode: dto.product_code,
+        })
         .getOne();
-      if (!organizationProduct) throw this.notFound('Organization product not found');
+      if (!organizationProduct)
+        throw this.notFound('Organization product not found');
+      if (organizationProduct.product.code === 'legal') {
+        throw new AccessError(
+          'ACCESS_CONFLICT',
+          'Hemia Legal provisioning uses the Event Bus',
+          HttpStatus.CONFLICT,
+        );
+      }
 
-      const instanceRepository = manager.getRepository(OrganizationProductInstance);
+      const instanceRepository = manager.getRepository(
+        OrganizationProductInstance,
+      );
       let instance = await instanceRepository.findOneBy({
         organizationProductId: organizationProduct.id,
       });
       instance ??= instanceRepository.create({
         organizationProductId: organizationProduct.id,
       });
-      instance.externalTenantId = dto.external_tenant_id ?? instance.externalTenantId ?? null;
+      instance.externalTenantId =
+        dto.external_tenant_id ?? instance.externalTenantId ?? null;
       instance.status = dto.status;
       instance.metadata = dto.metadata ?? {};
       instance.lastVerifiedAt = new Date();
       if (dto.status === 'ready') instance.provisionedAt ??= new Date();
       const savedInstance = await instanceRepository.save(instance);
 
-      organizationProduct.status = dto.status === 'ready' ? 'enabled' : 'failed';
+      organizationProduct.status =
+        dto.status === 'ready' ? 'enabled' : 'failed';
       organizationProduct.enabledAt =
         dto.status === 'ready' ? new Date() : organizationProduct.enabledAt;
       organizationProduct.updatedByIdentityId = actor.identityReferenceId;
@@ -133,11 +186,14 @@ export class ProductsService {
         aggregateType: 'organization_product',
         aggregateId: savedProduct.id,
         actor,
+        subject: `organizations/${dto.organization_id}/products/${dto.product_code}`,
         data: {
           organization_id: dto.organization_id,
           product_code: dto.product_code,
+          organization_name: organizationProduct.organization.name,
           external_tenant_id: savedInstance.externalTenantId,
           status: savedProduct.status,
+          provisioning_status: dto.status === 'ready' ? 'ready' : 'failed',
         },
       });
       await this.invalidateOrganizationMembers(manager, dto.organization_id);
@@ -153,10 +209,15 @@ export class ProductsService {
     dto: EnableProductDto,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const organization = await manager.getRepository(Organization).findOneBy({ id: organizationId });
+      const organization = await manager
+        .getRepository(Organization)
+        .findOneBy({ id: organizationId });
       if (!organization) throw this.notFound('Organization not found');
-      const product = await manager.getRepository(Product).findOneBy({ code: productCode });
-      if (!product || product.status !== 'active') throw this.notFound('Product not found');
+      const product = await manager
+        .getRepository(Product)
+        .findOneBy({ code: productCode });
+      if (!product || product.status !== 'active')
+        throw this.notFound('Product not found');
 
       const repository = manager.getRepository(OrganizationProduct);
       let organizationProduct = await repository.findOneBy({
@@ -169,26 +230,65 @@ export class ProductsService {
         createdByIdentityId: actor.identityReferenceId,
       });
 
+      const existingInstance = organizationProduct.id
+        ? await manager
+            .getRepository(OrganizationProductInstance)
+            .findOneBy({ organizationProductId: organizationProduct.id })
+        : null;
+      if (
+        action === 'enabled' &&
+        product.provisioningMode === 'event_driven' &&
+        (!existingInstance ||
+          existingInstance.status !== 'ready' ||
+          !existingInstance.externalTenantId)
+      ) {
+        throw new AccessError(
+          'ACCESS_CONFLICT',
+          'Product instance must be ready before activation',
+          HttpStatus.CONFLICT,
+        );
+      }
+
       const before = { ...organizationProduct };
       if (action === 'enable') {
         organizationProduct.status =
           product.provisioningMode === 'none' ? 'enabled' : 'provisioning';
         organizationProduct.source = dto.source ?? 'manual';
         organizationProduct.entitlementReference =
-          dto.entitlement_reference ?? organizationProduct.entitlementReference ?? null;
-        organizationProduct.configuration = dto.configuration ?? organizationProduct.configuration ?? {};
-        if (organizationProduct.status === 'enabled') organizationProduct.enabledAt = new Date();
+          dto.entitlement_reference ??
+          organizationProduct.entitlementReference ??
+          null;
+        organizationProduct.configuration =
+          dto.configuration ?? organizationProduct.configuration ?? {};
+        if (organizationProduct.status === 'enabled')
+          organizationProduct.enabledAt = new Date();
       } else {
         organizationProduct.status = action;
         if (action === 'enabled') organizationProduct.enabledAt = new Date();
-        if (action === 'suspended') organizationProduct.suspendedAt = new Date();
+        if (action === 'suspended')
+          organizationProduct.suspendedAt = new Date();
         if (action === 'disabled') organizationProduct.disabledAt = new Date();
       }
       organizationProduct.updatedByIdentityId = actor.identityReferenceId;
       organizationProduct.version = (organizationProduct.version ?? 0) + 1;
       const saved = await repository.save(organizationProduct);
 
-      const verb = action === 'enable' ? (saved.status === 'enabled' ? 'enabled' : 'provisioning') : action;
+      const verb =
+        action === 'enable'
+          ? saved.status === 'enabled'
+            ? 'enabled'
+            : 'provisioning'
+          : action;
+      const eventType =
+        action === 'enable'
+          ? saved.status === 'enabled'
+            ? 'access.organization_product.enabled.v1'
+            : 'access.organization_product.enable_requested.v1'
+          : `access.organization_product.${verb}.v1`;
+      const eventTypes =
+        eventType === 'access.organization_product.enable_requested.v1'
+          ? [eventType, 'access.organization_product.provisioning.v1']
+          : [eventType];
       await this.audit.record(manager, {
         organizationId,
         actor,
@@ -198,29 +298,49 @@ export class ProductsService {
         before: before as Record<string, unknown>,
         after: saved as unknown as Record<string, unknown>,
       });
-      await this.outbox.record(manager, {
-        type:
-          action === 'enable'
-            ? 'access.organization_product.enable_requested.v1'
-            : `access.organization_product.${verb}.v1`,
-        aggregateType: 'organization_product',
-        aggregateId: saved.id,
-        actor,
-        data: { organization_id: organizationId, product_code: productCode, status: saved.status },
-      });
+      const data = {
+        organization_id: organizationId,
+        product_code: productCode,
+        organization_name: organization.name,
+        status: saved.status,
+        provisioning_status:
+          saved.status === 'provisioning'
+            ? 'pending'
+            : existingInstance?.status === 'ready'
+              ? 'ready'
+              : existingInstance?.status === 'failed'
+                ? 'failed'
+                : undefined,
+        external_tenant_id: existingInstance?.externalTenantId ?? undefined,
+      };
+      for (const type of eventTypes) {
+        await this.outbox.record(manager, {
+          type,
+          aggregateType: 'organization_product',
+          aggregateId: saved.id,
+          actor,
+          subject: `organizations/${organizationId}/products/${productCode}`,
+          data,
+        });
+      }
       await this.invalidateOrganizationMembers(manager, organizationId);
       return saved;
     });
   }
 
-  private async invalidateOrganizationMembers(manager: import('typeorm').EntityManager, organizationId: string) {
+  private async invalidateOrganizationMembers(
+    manager: import('typeorm').EntityManager,
+    organizationId: string,
+  ) {
     const memberships = await manager.getRepository(Membership).find({
       where: { organizationId, status: 'active' },
       select: { identityReferenceId: true },
     });
     await Promise.all(
       memberships.map((membership) =>
-        this.contextCache.del(this.contextCache.key(membership.identityReferenceId)),
+        this.contextCache.del(
+          this.contextCache.key(membership.identityReferenceId),
+        ),
       ),
     );
   }

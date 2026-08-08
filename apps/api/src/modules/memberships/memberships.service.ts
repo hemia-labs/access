@@ -6,6 +6,7 @@ import { AccessError } from '../../common/errors/access-error';
 import { AccessContextCacheService } from '../access-context/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
 import { IdentityReferencesService } from '../identity-references/identity-references.service';
+import { IdentityReference } from '../identity-references/entities/identity-reference.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OutboxService } from '../outbox/outbox.service';
 import { MembershipRole } from '../roles/entities/membership-role.entity';
@@ -195,6 +196,7 @@ export class MembershipsService {
       const saved = await manager.getRepository(Membership).save(membership);
       const action = `membership.${status === 'active' ? 'activate' : status}`;
       const eventType = `access.membership.${status === 'active' ? 'activated' : status}.v1`;
+      const eventData = await this.membershipEventData(manager, saved, actor);
       await this.audit.record(manager, {
         organizationId,
         actor,
@@ -209,11 +211,8 @@ export class MembershipsService {
         aggregateType: 'membership',
         aggregateId: saved.id,
         actor,
-        data: {
-          organization_id: organizationId,
-          membership_id: saved.id,
-          context_version: saved.contextVersion,
-        },
+        subject: `organizations/${organizationId}/memberships/${saved.id}`,
+        data: eventData,
       });
       await this.contextCache.del(this.contextCache.key(saved.identityReferenceId));
       return saved;
@@ -225,6 +224,39 @@ export class MembershipsService {
     if (status === 'active') membership.joinedAt ??= new Date();
     if (status === 'suspended') membership.suspendedAt = new Date();
     if (status === 'revoked') membership.revokedAt = new Date();
+  }
+
+  private async membershipEventData(
+    manager: import('typeorm').EntityManager,
+    membership: Membership,
+    actor: AccessActor,
+  ) {
+    const identity = await manager
+      .getRepository(IdentityReference)
+      .findOneBy({ id: membership.identityReferenceId });
+    const roleRepository = manager.getRepository(MembershipRole);
+    const assignments =
+      typeof roleRepository.find === 'function'
+        ? await roleRepository.find({
+            where: { membershipId: membership.id },
+            relations: { role: true },
+          })
+        : [];
+
+    return {
+      organization_id: membership.organizationId,
+      membership_id: membership.id,
+      identity_issuer: identity?.issuer ?? actor.issuer,
+      subject_id: identity?.subjectId ?? actor.subjectId,
+      membership_status:
+        membership.status === 'pending' || membership.status === 'expired'
+          ? 'active'
+          : membership.status,
+      role_codes: assignments
+        .map((assignment) => assignment.role?.code)
+        .filter((code): code is string => Boolean(code)),
+      context_version: membership.contextVersion,
+    };
   }
 
   private notFound(message: string) {
