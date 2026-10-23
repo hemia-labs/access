@@ -30,7 +30,7 @@ Access no autentica usuarios ni administra credenciales, sesiones de identidad u
 ```bash
 bun install
 
-bun run dev        # levanta web + api en paralelo
+bun run dev        # inicia web; ejecutar dev:api en otra terminal
 bun run dev:web    # solo frontend (http://localhost:3000)
 bun run dev:api    # solo backend  (http://localhost:3019)
 ```
@@ -56,7 +56,8 @@ Reglas:
 - `synchronize: true` y `migrationsRun: true` estan prohibidos.
 - Migraciones y seeds se ejecutan manualmente, nunca en el arranque.
 - `/health/ready` queda not ready con `pending_migrations` hasta aplicar migraciones pendientes.
-- Los seeds son idempotentes; re-ejecutarlos no debe duplicar orgs, roles, permisos, productos ni bootstrap admin.
+- El seed solo inserta catálogos faltantes; conserva todos los campos y estados existentes. La matriz de permisos se asigna solo a roles nuevos y el bootstrap de identidad, membresía, roles y accesos de Hemia se crea solo con la organización inicial. Reejecutarlo no restaura relaciones retiradas ni reactiva accesos.
+- Los roles de sistema de Billing/Legal y sus concesiones siguen en los comandos de bootstrap explícitos; el seed general no los reconfigura.
 
 ## Verificacion minima
 
@@ -83,3 +84,17 @@ access/
 ```
 
 Cada app documenta su stack, variables de entorno y comandos en su propio README.
+
+## Retiro de Workload Access — 2026-10-20
+
+El backend y las tablas de Workload Access fueron retirados del perfil vigente.
+La autenticación M2M usa OAuth client_credentials por servicio, audiencia y scopes.
+Los roles/permisos normales de personas permanecen.
+
+## Pruebas y estructura de módulos
+
+Todas las pruebas están en [`test/`](test/README.md). Ejecutar `bun run test` desde esta raíz. Los módulos conservan su archivo `*.module.ts` como entrada y agrupan sus responsabilidades repetidas en subcarpetas: caché, JWKS y autorización en Access Context; catálogos, DTOs, autorización e historial en System Roles; transporte y aprovisionamiento en Event Bus.
+
+## Observabilidad
+
+La integración de producción con HORUS sigue pendiente: contrato de transporte/autenticación, métricas, umbrales y validación de alertas. El laboratorio local de Prometheus/Alertmanager, sus pruebas y su runner de carga dependían del paquete de métricas retirado y fueron eliminados.

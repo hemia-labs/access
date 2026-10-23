@@ -1,7 +1,19 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
 import type { AccessRequest } from '../../common/auth/access-actor.type';
-import { AcceptInvitationDto, CreateInvitationDto } from './dtos/invitation.dto';
+import {
+  AcceptInvitationDto,
+  CreateInvitationDto,
+} from './dtos/invitation.dto';
 import { InvitationsService } from './invitations.service';
 
 @UseGuards(AccessAuthGuard)
@@ -34,12 +46,18 @@ export class InvitationsController {
   }
 
   @Post('v1/invitations/:invitationId/revoke')
-  revoke(@Req() request: AccessRequest, @Param('invitationId', ParseUUIDPipe) invitationId: string) {
+  revoke(
+    @Req() request: AccessRequest,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ) {
     return this.invitations.revoke(request.accessActor!, invitationId);
   }
 
   @Post('v1/invitations/:invitationId/resend')
-  resend(@Req() request: AccessRequest, @Param('invitationId', ParseUUIDPipe) invitationId: string) {
+  resend(
+    @Req() request: AccessRequest,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ) {
     return this.invitations.resend(request.accessActor!, invitationId);
   }
 }

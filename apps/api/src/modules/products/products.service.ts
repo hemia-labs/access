@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
-import { AccessContextCacheService } from '../access-context/access-context-cache.service';
+import { AccessContextCacheService } from '../access-context/cache/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
 import { Membership } from '../memberships/entities/membership.entity';
 import { Organization } from '../organizations/entities/organization.entity';
@@ -295,7 +295,7 @@ export class ProductsService {
         action: `organization_product.${verb}`,
         resourceType: 'organization_product',
         resourceId: saved.id,
-        before: before as Record<string, unknown>,
+        before: before,
         after: saved as unknown as Record<string, unknown>,
       });
       const data = {

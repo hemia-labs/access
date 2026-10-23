@@ -1,24 +1,30 @@
+import { protectInternalOrganization } from '../../common/auth/platform-administration';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { DataSource, IsNull, Repository } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
-import { AccessContextCacheService } from '../access-context/access-context-cache.service';
+import { AccessContextCacheService } from '../access-context/cache/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
 import { IdentityReferencesService } from '../identity-references/identity-references.service';
 import { Membership } from '../memberships/entities/membership.entity';
-import { Organization } from '../organizations/entities/organization.entity';
 import { OutboxService } from '../outbox/outbox.service';
 import { MembershipRole } from '../roles/entities/membership-role.entity';
 import { Role } from '../roles/entities/role.entity';
-import { AcceptInvitationDto, CreateInvitationDto } from './dtos/invitation.dto';
+import {
+  AcceptInvitationDto,
+  CreateInvitationDto,
+} from './dtos/invitation.dto';
 import { Invitation } from './entities/invitation.entity';
 
 @Injectable()
 export class InvitationsService {
   // ponytail: single-process fallback, Redis rate limiting when shared limits matter.
-  private readonly attempts = new Map<string, { count: number; resetAt: number }>();
+  private readonly attempts = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
 
   constructor(
     private readonly dataSource: DataSource,
@@ -43,15 +49,28 @@ export class InvitationsService {
     return invitation;
   }
 
-  async create(actor: AccessActor, organizationId: string, dto: CreateInvitationDto) {
+  async create(
+    actor: AccessActor,
+    organizationId: string,
+    dto: CreateInvitationDto,
+  ) {
     const token = randomBytes(32).toString('base64url');
     const tokenHash = this.hash(token);
-    const expiresAt = new Date(Date.now() + (dto.expires_in_hours ?? 72) * 3600_000);
+    const expiresAt = new Date(
+      Date.now() + (dto.expires_in_hours ?? 72) * 3600_000,
+    );
 
     const invitation = await this.dataSource.transaction(async (manager) => {
-      const organization = await manager.getRepository(Organization).findOneBy({
-        id: organizationId,
-      });
+      const organization = await protectInternalOrganization(
+        manager,
+        actor,
+        organizationId,
+      );
+      await this.requireInvitationRoles(
+        manager,
+        organizationId,
+        dto.role_codes ?? ['organization_member'],
+      );
       if (!organization) throw this.notFound('Organization not found');
       const saved = await manager.getRepository(Invitation).save(
         manager.getRepository(Invitation).create({
@@ -91,7 +110,11 @@ export class InvitationsService {
     const tokenHash = this.hash(dto.token);
     const invitation = await this.invitations.findOneBy({ tokenHash });
     if (!invitation || !this.same(tokenHash, invitation.tokenHash)) {
-      throw new AccessError('ACCESS_INVITATION_INVALID', 'Invitation is invalid', HttpStatus.BAD_REQUEST);
+      throw new AccessError(
+        'ACCESS_INVITATION_INVALID',
+        'Invitation is invalid',
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     return this.dataSource.transaction(async (manager) => {
@@ -99,14 +122,41 @@ export class InvitationsService {
       const locked = await repository.findOneBy({ id: invitation.id });
       if (!locked) throw this.notFound('Invitation not found');
       if (locked.status !== 'pending') {
-        throw new AccessError('ACCESS_INVITATION_INVALID', 'Invitation is not pending', HttpStatus.CONFLICT);
+        throw new AccessError(
+          'ACCESS_INVITATION_INVALID',
+          'Invitation is not pending',
+          HttpStatus.CONFLICT,
+        );
       }
       if (locked.expiresAt <= new Date()) {
         locked.status = 'expired';
         await repository.save(locked);
-        throw new AccessError('ACCESS_INVITATION_EXPIRED', 'Invitation expired', HttpStatus.BAD_REQUEST);
+        throw new AccessError(
+          'ACCESS_INVITATION_EXPIRED',
+          'Invitation expired',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
+      const organization = await protectInternalOrganization(
+        manager,
+        {
+          identityReferenceId: locked.createdByIdentityId,
+          identityType: 'workforce_user',
+        },
+        locked.organizationId,
+      );
+      if (organization.status !== 'active')
+        throw new AccessError(
+          'ACCESS_FORBIDDEN',
+          'Organization is not active',
+          HttpStatus.FORBIDDEN,
+        );
+      await this.requireInvitationRoles(
+        manager,
+        locked.organizationId,
+        locked.roleCodes,
+      );
       const identity = await this.identities.findOrCreateFromClaims({
         issuer: actor.issuer,
         subjectId: actor.subjectId,
@@ -119,7 +169,11 @@ export class InvitationsService {
         identity.emailSnapshot &&
         this.normalize(identity.emailSnapshot) !== locked.emailNormalized
       ) {
-        throw new AccessError('ACCESS_INVITATION_EMAIL_MISMATCH', 'Invitation email does not match identity', HttpStatus.FORBIDDEN);
+        throw new AccessError(
+          'ACCESS_INVITATION_EMAIL_MISMATCH',
+          'Invitation email does not match identity',
+          HttpStatus.FORBIDDEN,
+        );
       }
 
       const membershipRepository = manager.getRepository(Membership);
@@ -196,8 +250,13 @@ export class InvitationsService {
     const invitation = await this.dataSource.transaction(async (manager) => {
       const item = await manager.getRepository(Invitation).findOneBy({ id });
       if (!item) throw this.notFound('Invitation not found');
+      await protectInternalOrganization(manager, actor, item.organizationId);
       if (item.status !== 'pending') {
-        throw new AccessError('ACCESS_INVITATION_INVALID', 'Invitation is not pending', HttpStatus.CONFLICT);
+        throw new AccessError(
+          'ACCESS_INVITATION_INVALID',
+          'Invitation is not pending',
+          HttpStatus.CONFLICT,
+        );
       }
       item.tokenHash = tokenHash;
       item.expiresAt = new Date(Date.now() + 72 * 3600_000);
@@ -207,17 +266,26 @@ export class InvitationsService {
         aggregateType: 'invitation',
         aggregateId: saved.id,
         actor,
-        data: { organization_id: saved.organizationId, invitation_id: saved.id, resent: true },
+        data: {
+          organization_id: saved.organizationId,
+          invitation_id: saved.id,
+          resent: true,
+        },
       });
       return saved;
     });
     return { ...this.safe(invitation), token };
   }
 
-  private async updateStatus(actor: AccessActor, id: string, status: 'revoked') {
+  private async updateStatus(
+    actor: AccessActor,
+    id: string,
+    status: 'revoked',
+  ) {
     const invitation = await this.dataSource.transaction(async (manager) => {
       const item = await manager.getRepository(Invitation).findOneBy({ id });
       if (!item) throw this.notFound('Invitation not found');
+      await protectInternalOrganization(manager, actor, item.organizationId);
       item.status = status;
       item.revokedAt = new Date();
       const saved = await manager.getRepository(Invitation).save(item);
@@ -234,11 +302,35 @@ export class InvitationsService {
         aggregateType: 'invitation',
         aggregateId: saved.id,
         actor,
-        data: { organization_id: saved.organizationId, invitation_id: saved.id },
+        data: {
+          organization_id: saved.organizationId,
+          invitation_id: saved.id,
+        },
       });
       return saved;
     });
     return invitation;
+  }
+
+  private async requireInvitationRoles(
+    manager: import('typeorm').EntityManager,
+    organizationId: string,
+    codes: string[],
+  ) {
+    for (const code of codes) {
+      const role = await manager.getRepository(Role).findOne({
+        where: [
+          { code, organizationId },
+          { code, organizationId: IsNull() },
+        ],
+      });
+      if (!role || role.scope !== 'organization' || role.status !== 'active')
+        throw new AccessError(
+          'ACCESS_FORBIDDEN',
+          'Invitations can only grant active organizational roles',
+          HttpStatus.FORBIDDEN,
+        );
+    }
   }
 
   private rateLimit(key: string) {
@@ -250,7 +342,11 @@ export class InvitationsService {
     }
     item.count += 1;
     if (item.count > 10) {
-      throw new AccessError('ACCESS_RATE_LIMITED', 'Too many invitation attempts', HttpStatus.TOO_MANY_REQUESTS);
+      throw new AccessError(
+        'ACCESS_RATE_LIMITED',
+        'Too many invitation attempts',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   }
 
@@ -268,6 +364,7 @@ export class InvitationsService {
 
   private safe(invitation: Invitation) {
     const { tokenHash: _tokenHash, ...safe } = invitation;
+    void _tokenHash;
     return safe as unknown as Record<string, unknown>;
   }
 

@@ -1,10 +1,21 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { OrganizationProduct } from './organization-product.entity';
 
 export type ProductInstanceStatus = 'ready' | 'failed';
 
 @Entity('organization_product_instances')
-@Index('ux_product_instances_org_product', ['organizationProductId'], { unique: true })
+@Index('ux_product_instances_org_product', ['organizationProductId'], {
+  unique: true,
+})
 export class OrganizationProductInstance {
   @PrimaryGeneratedColumn('uuid')
   id: string;

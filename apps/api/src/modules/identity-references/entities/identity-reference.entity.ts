@@ -7,7 +7,8 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type IdentityType = 'workforce_user' | 'customer_user' | 'service_account';
+export type IdentityType =
+  'workforce_user' | 'customer_user' | 'service_account';
 export type IdentityReferenceStatus = 'active' | 'disabled';
 
 @Entity('identity_references')
@@ -24,7 +25,7 @@ export class IdentityReference {
   @Column({ name: 'subject_id' })
   subjectId: string;
 
-  @Column({ name: 'identity_type' })
+  @Column({ name: 'identity_type', type: 'varchar' })
   identityType: IdentityType;
 
   @Column({ name: 'email_snapshot', type: 'varchar', nullable: true })
@@ -36,7 +37,7 @@ export class IdentityReference {
   @Column({ name: 'avatar_url_snapshot', type: 'varchar', nullable: true })
   avatarUrlSnapshot: string | null;
 
-  @Column({ default: 'active' })
+  @Column({ type: 'varchar', default: 'active' })
   status: IdentityReferenceStatus;
 
   @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })

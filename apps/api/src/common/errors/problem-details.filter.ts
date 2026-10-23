@@ -45,10 +45,13 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
   private code(exception: unknown, status: number) {
     if (exception instanceof AccessError) return exception.code;
-    if (status === HttpStatus.UNAUTHORIZED) return 'ACCESS_UNAUTHENTICATED';
-    if (status === HttpStatus.NOT_FOUND) return 'ACCESS_ORGANIZATION_NOT_FOUND';
-    if (status === HttpStatus.CONFLICT) return 'ACCESS_CONFLICT';
-    if (status === HttpStatus.BAD_REQUEST) return 'ACCESS_VALIDATION_ERROR';
+    if (status === Number(HttpStatus.UNAUTHORIZED))
+      return 'ACCESS_UNAUTHENTICATED';
+    if (status === Number(HttpStatus.NOT_FOUND))
+      return 'ACCESS_ORGANIZATION_NOT_FOUND';
+    if (status === Number(HttpStatus.CONFLICT)) return 'ACCESS_CONFLICT';
+    if (status === Number(HttpStatus.BAD_REQUEST))
+      return 'ACCESS_VALIDATION_ERROR';
     return 'ACCESS_INTERNAL_ERROR';
   }
 

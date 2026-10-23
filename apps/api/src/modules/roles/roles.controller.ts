@@ -46,7 +46,9 @@ export class RolesController {
 
   @Get('v1/organizations/:organizationId/roles')
   @AccessPermission('role.read')
-  findOrganizationRoles(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
+  findOrganizationRoles(
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+  ) {
     return this.roles.findOrganizationRoles(organizationId);
   }
 
@@ -85,7 +87,9 @@ export class RolesController {
     );
   }
 
-  @Delete('v1/organizations/:organizationId/memberships/:membershipId/roles/:roleId')
+  @Delete(
+    'v1/organizations/:organizationId/memberships/:membershipId/roles/:roleId',
+  )
   @AccessPermission('role.revoke')
   revokeRole(
     @Req() request: AccessRequest,

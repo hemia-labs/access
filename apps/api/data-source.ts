@@ -7,7 +7,7 @@ dotenv.config({ path: '.env.local' });
 
 const isProduction = process.env.NODE_ENV === 'production';
 const ext = isProduction ? 'js' : 'ts';
-const baseDir = isProduction ? 'dist' : 'src';
+const baseDir = isProduction ? 'dist/src' : 'src';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -16,7 +16,11 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE,
+  synchronize: false,
+  migrationsRun: false,
   extra: { options: '-c timezone=America/Mexico_City' },
   entities: [path.join(process.cwd(), `${baseDir}/**/*.entity.${ext}`)],
-  migrations: [path.join(process.cwd(), `${baseDir}/database/migrations/*.${ext}`)],
+  migrations: [
+    path.join(process.cwd(), `${baseDir}/database/migrations/*.${ext}`),
+  ],
 });

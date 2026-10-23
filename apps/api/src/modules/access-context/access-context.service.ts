@@ -1,17 +1,19 @@
+import type { LegalConsumerContextDto } from './dtos/legal-consumer-context.dto';
+import { SystemAuthorizationService } from './authorization/system-authorization.service';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
-import { IdentityReference } from '../identity-references/entities/identity-reference.entity';
 import { Membership } from '../memberships/entities/membership.entity';
 import { MembershipRole } from '../roles/entities/membership-role.entity';
 import { Permission } from '../roles/entities/permission.entity';
 import { RolePermission } from '../roles/entities/role-permission.entity';
 import { Role } from '../roles/entities/role.entity';
-import { AccessContextCacheService } from './access-context-cache.service';
-import { AccessJwksService } from './access-jwks.service';
+import { AccessContextCacheService } from './cache/access-context-cache.service';
+import { AccessJwksService } from './jwks/access-jwks.service';
+import { ConsoleAuthorizationService } from './authorization/console-authorization.service';
 
 type ContextRow = {
   organization_id: string;
@@ -65,6 +67,8 @@ export class AccessContextService {
     private readonly cache: AccessContextCacheService,
     private readonly jwks: AccessJwksService,
     private readonly config: ConfigService,
+    private readonly systemAuthorization: SystemAuthorizationService,
+    private readonly consoleAuthorization: ConsoleAuthorizationService,
   ) {}
 
   me(actor: AccessActor) {
@@ -76,22 +80,53 @@ export class AccessContextService {
   }
 
   async context(actor: AccessActor, productCode?: string) {
+    if (productCode === 'billing' || productCode === 'legal')
+      return {
+        identity: this.identity(actor),
+        organizations: await this.systemAuthorization.organizations(
+          actor,
+          productCode,
+        ),
+      };
     const key = this.cache.key(actor.identityReferenceId);
-    const cached = productCode ? null : await this.cache.get<AccessContext>(key);
+    const cached = productCode
+      ? null
+      : await this.cache.get<AccessContext>(key);
     if (cached) return cached;
 
     const context = {
       identity: this.identity(actor),
-      organizations: this.group(await this.rows(actor.identityReferenceId, productCode)),
+      organizations: this.group(
+        await this.rows(actor.identityReferenceId, productCode),
+      ),
     };
     if (!productCode) await this.cache.set(key, context);
     return context;
   }
 
-  async resolve(actor: AccessActor, organizationId: string, audience?: string, productCode?: string) {
-    const organization = await this.findOrganization(actor, organizationId, productCode);
+  async resolve(
+    actor: AccessActor,
+    organizationId: string,
+    audience?: string,
+    productCode?: string,
+  ) {
+    if (productCode === 'console')
+      return this.consoleAuthorization.resolve(actor, organizationId, audience);
+    if (productCode === 'billing' || productCode === 'legal')
+      return this.systemAuthorization.resolve(
+        actor,
+        organizationId,
+        audience,
+        productCode,
+      );
+    const organization = await this.findOrganization(
+      actor,
+      organizationId,
+      productCode,
+    );
     const aud =
-      audience ?? this.config.get<string>('access.expectedAudience', 'access-api');
+      audience ??
+      this.config.get<string>('access.expectedAudience', 'access-api');
     const contextToken = await this.jwks.signContextToken(
       {
         identity_reference_id: actor.identityReferenceId,
@@ -115,6 +150,86 @@ export class AccessContextService {
       context_version: organization.context_version,
       product: organization.product ?? null,
       context_token: contextToken,
+    };
+  }
+
+  async legalOrganizations(
+    actor: AccessActor,
+    organizationIds: string[],
+    active = false,
+  ) {
+    const legalServiceClientId = this.config.get<string>(
+      'access.legalServiceClientId',
+    );
+    if (
+      actor.identityType !== 'service_account' ||
+      !legalServiceClientId ||
+      actor.subjectId !== legalServiceClientId ||
+      !actor.scopes?.includes('legal.consumer_context.read')
+    )
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Authorized Legal service client required',
+        HttpStatus.FORBIDDEN,
+      );
+    const rows: { organization_id: string }[] = await this.memberships.query(
+      `SELECT o.id AS organization_id FROM organizations o WHERE o.id=ANY($1::uuid[]) AND ($2::boolean=false OR (o.status='active' AND EXISTS(SELECT 1 FROM organization_products op JOIN products p ON p.id=op.product_id WHERE op.organization_id=o.id AND p.code='legal' AND p.status='active' AND op.status='enabled' AND (op.expires_at IS NULL OR op.expires_at>now()))))`,
+      [organizationIds, active],
+    );
+    return {
+      valid: rows.length === organizationIds.length,
+      organization_ids: rows.map((row) => row.organization_id),
+    };
+  }
+
+  async legalConsumerContext(
+    actor: AccessActor,
+    input: LegalConsumerContextDto,
+  ) {
+    const legalServiceClientId = this.config.get<string>(
+      'access.legalServiceClientId',
+    );
+    if (
+      actor.identityType !== 'service_account' ||
+      !legalServiceClientId ||
+      actor.subjectId !== legalServiceClientId ||
+      !actor.scopes?.includes('legal.consumer_context.read')
+    )
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Authorized Legal service client required',
+        HttpStatus.FORBIDDEN,
+      );
+    const rows: {
+      organization_id: string;
+      membership_id: string;
+      context_version: number;
+      roles: string[];
+    }[] = await this.memberships.query(
+      `
+      SELECT o.id AS organization_id, m.id AS membership_id, m.context_version,
+        ARRAY(SELECT r.code FROM membership_roles mr JOIN roles r ON r.id=mr.role_id
+          WHERE mr.membership_id=m.id AND r.status='active' AND (mr.expires_at IS NULL OR mr.expires_at>now()) ORDER BY r.code) AS roles
+      FROM organization_memberships m JOIN organizations o ON o.id=m.organization_id
+      JOIN identity_references i ON i.id=m.identity_reference_id
+      JOIN organization_products op ON op.organization_id=o.id
+      JOIN products p ON p.id=op.product_id AND p.code='legal' AND p.status='active'
+      WHERE o.id=$1 AND i.issuer=$2 AND i.subject_id=$3 AND i.status='active'
+        AND i.identity_type IN ('workforce_user','customer_user') AND o.status='active'
+        AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
+        AND op.status='enabled' AND (op.expires_at IS NULL OR op.expires_at>now())`,
+      [input.organization_id, input.identity_issuer, input.subject_id],
+    );
+    if (rows.length !== 1)
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Active consumer membership and product access required',
+        HttpStatus.FORBIDDEN,
+      );
+    return {
+      ...rows[0],
+      identity_issuer: input.identity_issuer,
+      subject_id: input.subject_id,
     };
   }
 
@@ -144,14 +259,19 @@ export class AccessContextService {
     return (
       candidate === '*' ||
       candidate === permission ||
-      (candidate.endsWith('.*') && permission.startsWith(candidate.slice(0, -1)))
+      (candidate.endsWith('.*') &&
+        permission.startsWith(candidate.slice(0, -1)))
     );
   }
 
-  private async findOrganization(actor: AccessActor, organizationId: string, productCode?: string) {
-    const organization = (await this.context(actor, productCode)).organizations.find(
-      (item) => item.organization_id === organizationId,
-    );
+  private async findOrganization(
+    actor: AccessActor,
+    organizationId: string,
+    productCode?: string,
+  ) {
+    const organization = (
+      await this.context(actor, productCode)
+    ).organizations.find((item) => item.organization_id === organizationId);
     if (!organization) {
       throw new AccessError(
         'ACCESS_CONTEXT_NOT_FOUND',
@@ -180,7 +300,11 @@ export class AccessContextService {
         'role',
         'role.id = membership_role.role_id AND role.status = :active',
       )
-      .leftJoin(RolePermission, 'role_permission', 'role_permission.role_id = role.id')
+      .leftJoin(
+        RolePermission,
+        'role_permission',
+        'role_permission.role_id = role.id',
+      )
       .leftJoin(
         Permission,
         'permission',

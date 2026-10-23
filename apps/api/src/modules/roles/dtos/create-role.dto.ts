@@ -15,6 +15,6 @@ export class CreateRoleDto {
   description?: string;
 
   @IsOptional()
-  @IsIn(['platform', 'organization'])
+  @IsIn(['organization'])
   scope?: AccessScope;
 }

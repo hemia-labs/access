@@ -1,11 +1,10 @@
 import {
-  IsIn,
+  IsEmpty,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
-import type { OrganizationType } from '../entities/organization.entity';
 
 export class UpdateOrganizationDto {
   @IsOptional()
@@ -28,9 +27,10 @@ export class UpdateOrganizationDto {
   @MaxLength(240)
   legalName?: string;
 
-  @IsOptional()
-  @IsIn(['internal', 'customer', 'partner', 'vendor', 'sandbox'])
-  type?: OrganizationType;
+  @IsEmpty({
+    message: 'Use the platform classification endpoint to change type',
+  })
+  type?: never;
 
   @IsOptional()
   @IsString()

@@ -1,4 +1,11 @@
-import { IsArray, IsIn, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsObject,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import type { MembershipType } from '../entities/membership.entity';
 
 class MembershipIdentityDto {

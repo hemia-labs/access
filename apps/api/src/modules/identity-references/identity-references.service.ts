@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AccessError } from '../../common/errors/access-error';
 import {
   IdentityReference,
   IdentityType,
@@ -28,11 +29,22 @@ export class IdentityReferencesService {
     });
 
     if (existing) {
-      existing.emailSnapshot = input.email;
-      existing.displayNameSnapshot = input.displayName;
-      existing.avatarUrlSnapshot = input.avatarUrl;
-      existing.lastSyncedAt = new Date();
-      return this.repository.save(existing);
+      this.assertIdentityType(existing, input.identityType);
+      // A stale metadata refresh must never restore status or rewrite the identity type.
+      await this.repository.update(
+        { id: existing.id, identityType: input.identityType },
+        {
+          emailSnapshot: input.email,
+          displayNameSnapshot: input.displayName,
+          avatarUrlSnapshot: input.avatarUrl,
+          lastSyncedAt: new Date(),
+        },
+      );
+      const current = await this.repository.findOneByOrFail({
+        id: existing.id,
+      });
+      this.assertIdentityType(current, input.identityType);
+      return current;
     }
 
     try {
@@ -50,12 +62,27 @@ export class IdentityReferencesService {
       );
     } catch (error) {
       if (this.isUniqueViolation(error)) {
-        return this.repository.findOneByOrFail({
+        const identity = await this.repository.findOneByOrFail({
           issuer: input.issuer,
           subjectId: input.subjectId,
         });
+        this.assertIdentityType(identity, input.identityType);
+        return identity;
       }
       throw error;
+    }
+  }
+
+  private assertIdentityType(
+    identity: IdentityReference,
+    expected: IdentityType,
+  ) {
+    if (identity.identityType !== expected) {
+      throw new AccessError(
+        'ACCESS_IDENTITY_TYPE_MISMATCH',
+        'Identity reference type does not match the verified identity',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
   }
 

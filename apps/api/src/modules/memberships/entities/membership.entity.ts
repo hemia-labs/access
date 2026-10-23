@@ -11,11 +11,17 @@ import {
 import { IdentityReference } from '../../identity-references/entities/identity-reference.entity';
 import { Organization } from '../../organizations/entities/organization.entity';
 
-export type MembershipStatus = 'pending' | 'active' | 'suspended' | 'revoked' | 'expired';
-export type MembershipType = 'member' | 'owner' | 'external_collaborator' | 'service';
+export type MembershipStatus =
+  'pending' | 'active' | 'suspended' | 'revoked' | 'expired';
+export type MembershipType =
+  'member' | 'owner' | 'external_collaborator' | 'service';
 
 @Entity('organization_memberships')
-@Index('ux_membership_org_identity', ['organizationId', 'identityReferenceId'], { unique: true })
+@Index(
+  'ux_membership_org_identity',
+  ['organizationId', 'identityReferenceId'],
+  { unique: true },
+)
 @Index('ix_memberships_identity_status', ['identityReferenceId', 'status'])
 @Index('ix_memberships_org_status', ['organizationId', 'status'])
 export class Membership {

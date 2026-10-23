@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
-import { AccessEventBusClient } from './access-event-bus.client';
+import { AccessEventBusClient } from './transport/access-event-bus.client';
 import { OutboxEvent } from '../outbox/entities/outbox-event.entity';
 
 const RETRY_DELAYS_MS = [10_000, 60_000, 300_000];
@@ -18,6 +18,8 @@ export class AccessEventOutboxPublisher
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(AccessEventOutboxPublisher.name);
+  private stopped = false;
+  private processing = false;
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -35,33 +37,82 @@ export class AccessEventOutboxPublisher
       return;
     }
 
-    this.timer = setInterval(() => {
-      void this.processPending().catch((error) =>
-        this.logger.error(error instanceof Error ? error.message : error),
-      );
-    }, 5_000);
+    this.schedule(0);
+  }
+
+  private schedule(delay: number) {
+    if (this.stopped) return;
+    this.timer = setTimeout(() => {
+      void this.tick();
+    }, delay);
+  }
+
+  private async tick() {
+    let delay = 5_000;
+    try {
+      const result = await this.processPending();
+      // Drain a backlog without a five-second pause between full batches.
+      if (result.processed === 100) delay = 0;
+    } catch (error) {
+      this.logger.error(error instanceof Error ? error.message : error);
+    } finally {
+      this.schedule(delay);
+    }
   }
 
   onModuleDestroy() {
-    if (this.timer) clearInterval(this.timer);
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
   }
 
-  async processPending(limit = 10) {
-    const now = new Date();
-    const events = await this.outbox.find({
-      where: [
-        { status: 'pending', nextAttemptAt: IsNull() },
-        { status: 'pending', nextAttemptAt: LessThanOrEqual(now) },
-        { status: 'failed', nextAttemptAt: LessThanOrEqual(now) },
-        { status: 'publishing', nextAttemptAt: IsNull() },
-        { status: 'publishing', nextAttemptAt: LessThanOrEqual(now) },
-      ],
-      order: { occurredAt: 'ASC' },
-      take: limit,
-    });
+  async processPending(limit = 100) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+      throw new RangeError('Outbox limit must be 1..1000');
+    if (this.processing) return { processed: 0 };
+    this.processing = true;
+    const started = Date.now();
+    try {
+      const now = new Date();
+      const events = await this.outbox.find({
+        where: [
+          { status: 'pending', nextAttemptAt: IsNull() },
+          { status: 'pending', nextAttemptAt: LessThanOrEqual(now) },
+          { status: 'failed', nextAttemptAt: LessThanOrEqual(now) },
+          { status: 'publishing', nextAttemptAt: IsNull() },
+          { status: 'publishing', nextAttemptAt: LessThanOrEqual(now) },
+        ],
+        order: { occurredAt: 'ASC' },
+        take: limit,
+      });
 
-    for (const event of events) await this.processEvent(event);
-    return { processed: events.length };
+      const lags: number[] = [];
+      for (const event of events) {
+        const lag = await this.processEvent(event);
+        if (lag !== undefined) lags.push(lag);
+      }
+      if (events.length) {
+        lags.sort((a, b) => a - b);
+        this.logger.log(
+          JSON.stringify({
+            metric: 'access_outbox_batch',
+            selected: events.length,
+            published: lags.length,
+            duration_ms: Date.now() - started,
+            oldest_selected_age_ms: Math.max(
+              0,
+              started - events[0].occurredAt.getTime(),
+            ),
+            publication_lag_p95_ms:
+              lags[Math.ceil(lags.length * 0.95) - 1] ?? null,
+            publication_lag_p99_ms:
+              lags[Math.ceil(lags.length * 0.99) - 1] ?? null,
+          }),
+        );
+      }
+      return { processed: events.length };
+    } finally {
+      this.processing = false;
+    }
   }
 
   private async processEvent(event: OutboxEvent) {
@@ -74,7 +125,7 @@ export class AccessEventOutboxPublisher
       })
       .where('id = :id', { id: event.id })
       .andWhere(
-        "status IN ('pending', 'failed') OR (status = 'publishing' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW()))",
+        "status IN ('pending', 'failed', 'publishing') AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())",
       )
       .execute();
     if (!claimed.affected) return;
@@ -88,8 +139,10 @@ export class AccessEventOutboxPublisher
 
     try {
       await this.bus.publish(event.eventType, data, {
+        eventId: event.id,
+        occurredAt: event.occurredAt.toISOString(),
         source: sourceValue(payload.source),
-        correlationId: stringValue(payload.correlation_id),
+        correlationId: stringValue(payload.correlation_id) ?? event.id,
         traceParent: stringValue(payload.trace_parent),
         subject: stringValue(payload.subject),
       });
@@ -98,7 +151,10 @@ export class AccessEventOutboxPublisher
       event.nextAttemptAt = null;
       event.lastError = null;
       await this.outbox.save(event);
-      this.logger.log(`Published ${event.eventType} (${event.id})`);
+      return Math.max(
+        0,
+        event.publishedAt.getTime() - event.occurredAt.getTime(),
+      );
     } catch (error) {
       await this.fail(event, error);
     }

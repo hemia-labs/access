@@ -11,13 +11,10 @@ import {
 import { IdentityReference } from '../../identity-references/entities/identity-reference.entity';
 
 export type OrganizationType =
-  | 'internal'
-  | 'customer'
-  | 'partner'
-  | 'vendor'
-  | 'sandbox';
+  'internal' | 'customer' | 'partner' | 'vendor' | 'sandbox';
 
-export type OrganizationStatus = 'pending' | 'active' | 'suspended' | 'archived';
+export type OrganizationStatus =
+  'pending' | 'active' | 'suspended' | 'archived';
 
 @Entity('organizations')
 @Index('ux_organizations_code', ['code'], { unique: true })
@@ -41,10 +38,10 @@ export class Organization {
   @Column({ name: 'legal_name', type: 'varchar', nullable: true })
   legalName: string | null;
 
-  @Column()
+  @Column({ type: 'varchar' })
   type: OrganizationType;
 
-  @Column({ default: 'pending' })
+  @Column({ type: 'varchar', default: 'pending' })
   status: OrganizationStatus;
 
   @Column({ name: 'country_code', type: 'varchar', nullable: true })

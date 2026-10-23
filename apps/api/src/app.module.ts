@@ -1,3 +1,4 @@
+import { SystemRolesModule } from './modules/system-roles/system-roles.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import accessConfig from './config/access.config';
@@ -36,6 +37,7 @@ import { EventBusModule } from './modules/event-bus/event-bus.module';
     InvitationsModule,
     ProductsModule,
     EventBusModule,
+    SystemRolesModule,
   ],
 })
 export class AppModule implements NestModule {

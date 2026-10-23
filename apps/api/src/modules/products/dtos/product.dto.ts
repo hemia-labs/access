@@ -1,5 +1,9 @@
 import { IsIn, IsObject, IsOptional, IsString } from 'class-validator';
-import type { ProductAudience, ProductProvisioningMode, ProductStatus } from '../entities/product.entity';
+import type {
+  ProductAudience,
+  ProductProvisioningMode,
+  ProductStatus,
+} from '../entities/product.entity';
 import type { OrganizationProductSource } from '../entities/organization-product.entity';
 import type { ProductInstanceStatus } from '../entities/organization-product-instance.entity';
 

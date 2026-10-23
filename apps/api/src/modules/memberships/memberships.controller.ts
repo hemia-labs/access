@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -12,6 +13,7 @@ import {
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
 import { AccessPermission } from '../../common/auth/access-permission.decorator';
 import type { AccessRequest } from '../../common/auth/access-actor.type';
+import { AccessError } from '../../common/errors/access-error';
 import { CreateMembershipDto } from './dtos/create-membership.dto';
 import { UpdateMembershipDto } from './dtos/update-membership.dto';
 import { MembershipsService } from './memberships.service';
@@ -68,7 +70,21 @@ export class MembershipsController {
     @Req() request: AccessRequest,
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Param('membershipId', ParseUUIDPipe) membershipId: string,
+    @Body() body: unknown,
   ) {
+    if (
+      body !== undefined &&
+      (!body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        Object.keys(body).length > 0)
+    ) {
+      throw new AccessError(
+        'ACCESS_VALIDATION_ERROR',
+        'Membership suspension does not accept request fields.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     return this.memberships.setStatus(
       request.accessActor!,
       organizationId,

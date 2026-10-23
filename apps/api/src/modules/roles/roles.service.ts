@@ -1,9 +1,14 @@
+import {
+  protectInternalOrganization,
+  protectRoleAssignment,
+  requirePlatformAdministrator,
+} from '../../common/auth/platform-administration';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
-import { AccessContextCacheService } from '../access-context/access-context-cache.service';
+import { AccessContextCacheService } from '../access-context/cache/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
 import { IdentityReference } from '../identity-references/entities/identity-reference.entity';
 import { Membership } from '../memberships/entities/membership.entity';
@@ -40,13 +45,22 @@ export class RolesService {
   }
 
   createOrganizationRole(organizationId: string, dto: CreateRoleDto) {
+    if (
+      dto.code.startsWith('billing.') ||
+      (dto.scope && dto.scope !== 'organization')
+    )
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Organization endpoints cannot create platform roles',
+        HttpStatus.FORBIDDEN,
+      );
     return this.roles.save(
       this.roles.create({
         organizationId,
         code: dto.code,
         name: dto.name,
         description: dto.description ?? null,
-        scope: dto.scope ?? 'organization',
+        scope: 'organization',
         status: 'active',
         isSystem: false,
       }),
@@ -55,7 +69,10 @@ export class RolesService {
 
   findOrganizationRoles(organizationId: string) {
     return this.roles.find({
-      where: [{ organizationId }, { organizationId: IsNull(), scope: 'organization' }],
+      where: [
+        { organizationId },
+        { organizationId: IsNull(), scope: 'organization' },
+      ],
       order: { code: 'ASC' },
     });
   }
@@ -85,6 +102,7 @@ export class RolesService {
     dto: AssignRoleDto,
   ) {
     return this.dataSource.transaction(async (manager) => {
+      await protectInternalOrganization(manager, actor, organizationId);
       const membership = await manager
         .getRepository(Membership)
         .findOneBy({ id: membershipId, organizationId });
@@ -96,6 +114,7 @@ export class RolesService {
         dto,
       );
 
+      await protectRoleAssignment(manager, actor, organizationId, role);
       await manager.getRepository(MembershipRole).save(
         manager.getRepository(MembershipRole).create({
           membershipId,
@@ -109,7 +128,9 @@ export class RolesService {
       membership.contextVersion += 1;
       membership.updatedByIdentityId = actor.identityReferenceId;
       await manager.getRepository(Membership).save(membership);
-      const eventData = await this.roleEventData(manager, membership, actor, [role.code]);
+      const eventData = await this.roleEventData(manager, membership, actor, [
+        role.code,
+      ]);
 
       await this.audit.record(manager, {
         organizationId,
@@ -127,7 +148,9 @@ export class RolesService {
         subject: `organizations/${organizationId}/memberships/${membershipId}`,
         data: { ...eventData, role_id: role.id, role_code: role.code },
       });
-      await this.contextCache.del(this.contextCache.key(membership.identityReferenceId));
+      await this.contextCache.del(
+        this.contextCache.key(membership.identityReferenceId),
+      );
 
       return manager.getRepository(MembershipRole).findOneByOrFail({
         membershipId,
@@ -143,6 +166,7 @@ export class RolesService {
     roleId: string,
   ) {
     return this.dataSource.transaction(async (manager) => {
+      await protectInternalOrganization(manager, actor, organizationId);
       const membership = await manager
         .getRepository(Membership)
         .findOneBy({ id: membershipId, organizationId });
@@ -152,7 +176,13 @@ export class RolesService {
         .findOneBy({ membershipId, roleId });
       if (!membershipRole) throw this.notFound('Membership role not found');
 
-      await manager.getRepository(MembershipRole).delete({ membershipId, roleId });
+      const role = await manager.getRepository(Role).findOneBy({ id: roleId });
+      if (!role) throw this.notFound('Role not found');
+      if (role.scope === 'platform')
+        await requirePlatformAdministrator(manager, actor);
+      await manager
+        .getRepository(MembershipRole)
+        .delete({ membershipId, roleId });
       membership.version += 1;
       membership.contextVersion += 1;
       membership.updatedByIdentityId = actor.identityReferenceId;
@@ -175,13 +205,18 @@ export class RolesService {
         subject: `organizations/${organizationId}/memberships/${membershipId}`,
         data: { ...eventData, role_id: roleId },
       });
-      await this.contextCache.del(this.contextCache.key(membership.identityReferenceId));
+      await this.contextCache.del(
+        this.contextCache.key(membership.identityReferenceId),
+      );
 
       return { deleted: true };
     });
   }
 
-  private async findMutableOrganizationRole(organizationId: string, roleId: string) {
+  private async findMutableOrganizationRole(
+    organizationId: string,
+    roleId: string,
+  ) {
     const role = await this.roles.findOneBy({ id: roleId, organizationId });
     if (!role) throw this.notFound('Role not found');
     if (role.isSystem) {
@@ -202,7 +237,9 @@ export class RolesService {
   ) {
     const identityRepository = manager.getRepository(IdentityReference);
     const identity = identityRepository
-      ? await identityRepository.findOneBy({ id: membership.identityReferenceId })
+      ? await identityRepository.findOneBy({
+          id: membership.identityReferenceId,
+        })
       : null;
     const repository = manager.getRepository(MembershipRole);
     const assignments =
@@ -248,6 +285,12 @@ export class RolesService {
   }
 
   private notFound(message: string) {
-    return new AccessError(message.includes('Role') ? 'ACCESS_ROLE_NOT_FOUND' : 'ACCESS_MEMBERSHIP_NOT_FOUND', message, HttpStatus.NOT_FOUND);
+    return new AccessError(
+      message.includes('Role')
+        ? 'ACCESS_ROLE_NOT_FOUND'
+        : 'ACCESS_MEMBERSHIP_NOT_FOUND',
+      message,
+      HttpStatus.NOT_FOUND,
+    );
   }
 }

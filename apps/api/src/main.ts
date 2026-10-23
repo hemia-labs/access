@@ -9,7 +9,11 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableCors();
-  const config = app.get(ConfigService);
-  await app.listen(config.get<number>('access.port') ?? 3019);
+  const config = app.get<ConfigService>(ConfigService);
+  app.enableShutdownHooks();
+  const port = config.get<number>('access.port') ?? 3019;
+  const host = config.get<string>('access.bindHost');
+  if (host) await app.listen(port, host);
+  else await app.listen(port);
 }
-bootstrap();
+void bootstrap();

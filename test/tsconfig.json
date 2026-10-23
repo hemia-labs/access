@@ -1,0 +1,23 @@
+{
+  "extends": "../apps/api/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": "../apps/api",
+    "paths": {
+      "*": [
+        "node_modules/*"
+      ]
+    },
+    "types": [
+      "node",
+      "jest"
+    ],
+    "typeRoots": [
+      "../apps/api/node_modules/@types",
+      "../node_modules/@types"
+    ]
+  },
+  "include": [
+    "api/**/*.spec.ts"
+  ]
+}

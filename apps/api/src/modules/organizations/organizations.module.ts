@@ -1,3 +1,4 @@
+import { AccessContextCacheModule } from '../access-context/cache/access-context-cache.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
@@ -10,6 +11,7 @@ import { OrganizationsService } from './organizations.service';
 
 @Module({
   imports: [
+    AccessContextCacheModule,
     TypeOrmModule.forFeature([Organization]),
     IdentityReferencesModule,
     AuditModule,

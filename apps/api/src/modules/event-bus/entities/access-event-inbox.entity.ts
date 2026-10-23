@@ -8,6 +8,7 @@ import {
 
 @Entity('access_event_inbox')
 @Index('ux_access_event_inbox_event_id', ['eventId'], { unique: true })
+@Index('ix_access_event_inbox_event_type', ['eventType', 'receivedAt'])
 export class AccessEventInbox {
   @PrimaryGeneratedColumn('uuid')
   id: string;

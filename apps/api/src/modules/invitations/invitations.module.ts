@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
-import { AccessContextCacheModule } from '../access-context/access-context-cache.module';
+import { AccessContextCacheModule } from '../access-context/cache/access-context-cache.module';
 import { AuditModule } from '../audit/audit.module';
 import { IdentityReferencesModule } from '../identity-references/identity-references.module';
 import { Membership } from '../memberships/entities/membership.entity';
@@ -15,7 +15,13 @@ import { InvitationsService } from './invitations.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Invitation, Organization, Membership, Role, MembershipRole]),
+    TypeOrmModule.forFeature([
+      Invitation,
+      Organization,
+      Membership,
+      Role,
+      MembershipRole,
+    ]),
     IdentityReferencesModule,
     AuditModule,
     OutboxModule,

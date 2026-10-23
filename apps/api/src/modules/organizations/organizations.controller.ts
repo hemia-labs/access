@@ -1,3 +1,4 @@
+import { SetOrganizationTypeDto } from './dtos/set-organization-type.dto';
 import {
   Body,
   Controller,
@@ -61,11 +62,17 @@ export class OrganizationsController {
     @Param('organizationId', ParseUUIDPipe) organizationId: string,
     @Body() dto: UpdateOrganizationDto,
   ) {
-    return this.organizations.update(
-      request.accessActor!,
-      organizationId,
-      dto,
-    );
+    return this.organizations.update(request.accessActor!, organizationId, dto);
+  }
+
+  @Patch(':organizationId/classification')
+  @AccessPermission('organization.update', { global: true })
+  setType(
+    @Req() request: AccessRequest,
+    @Param('organizationId', ParseUUIDPipe) id: string,
+    @Body() dto: SetOrganizationTypeDto,
+  ) {
+    return this.organizations.setType(request.accessActor!, id, dto);
   }
 
   @Post(':organizationId/suspend')

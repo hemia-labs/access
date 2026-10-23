@@ -12,8 +12,12 @@ export class HealthController {
   }
 
   @Get('startup')
-  startup() {
-    return { status: 'ok' };
+  startup(@Res() response: Response) {
+    const result = this.health.startup();
+    if (result.status !== 'ok') {
+      return response.status(503).json(result);
+    }
+    return response.status(200).json(result);
   }
 
   @Get('ready')

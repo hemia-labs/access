@@ -1,6 +1,10 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('audit_events')
+@Index('ux_system_role_bootstrap_product', ['resourceId'], {
+  unique: true,
+  where: "action='system_role.bootstrap' AND resource_type='product'",
+})
 export class AuditEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;

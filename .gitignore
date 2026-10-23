@@ -2,3 +2,9 @@ node_modules/
 dist/
 .next/
 .env*.local
+
+# Local development signing keys
+apps/api/.keys/
+
+# Runtime event logs
+*.log.jsonl

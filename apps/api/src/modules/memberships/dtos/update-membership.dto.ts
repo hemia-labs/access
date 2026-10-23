@@ -1,4 +1,10 @@
-import { IsIn, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import {
+  IsIn,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsDateString,
+} from 'class-validator';
 import type { MembershipType } from '../entities/membership.entity';
 
 export class UpdateMembershipDto {
@@ -7,8 +13,8 @@ export class UpdateMembershipDto {
   membership_type?: MembershipType;
 
   @IsOptional()
-  @IsString()
-  expires_at?: string;
+  @IsDateString()
+  expires_at?: string | null;
 
   @IsOptional()
   @IsObject()

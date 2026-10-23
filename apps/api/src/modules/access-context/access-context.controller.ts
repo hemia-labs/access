@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  LegalConsumerContextDto,
+  LegalOrganizationContextDto,
+  LegalOrganizationsValidateDto,
+} from './dtos/legal-consumer-context.dto';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
 import type { AccessRequest } from '../../common/auth/access-actor.type';
 import { AccessContextService } from './access-context.service';
@@ -26,6 +40,7 @@ export class AccessContextController {
   }
 
   @Post('v1/me/context/resolve')
+  @Header('Cache-Control', 'no-store')
   resolve(@Req() request: AccessRequest, @Body() dto: ResolveContextDto) {
     return this.accessContext.resolve(
       request.accessActor!,
@@ -33,6 +48,39 @@ export class AccessContextController {
       dto.audience,
       dto.product_code,
     );
+  }
+
+  @Header('Cache-Control', 'no-store')
+  @Post('v1/internal/legal/organizations/validate')
+  legalOrganizations(
+    @Req() request: AccessRequest,
+    @Body() dto: LegalOrganizationsValidateDto,
+  ) {
+    return this.accessContext.legalOrganizations(
+      request.accessActor!,
+      dto.organization_ids,
+    );
+  }
+  @Header('Cache-Control', 'no-store')
+  @Post('v1/internal/legal/organization-context')
+  legalOrganizationContext(
+    @Req() request: AccessRequest,
+    @Body() dto: LegalOrganizationContextDto,
+  ) {
+    return this.accessContext.legalOrganizations(
+      request.accessActor!,
+      [dto.organization_id],
+      true,
+    );
+  }
+
+  @Header('Cache-Control', 'no-store')
+  @Post('v1/internal/legal/consumer-context')
+  legalConsumerContext(
+    @Req() request: AccessRequest,
+    @Body() dto: LegalConsumerContextDto,
+  ) {
+    return this.accessContext.legalConsumerContext(request.accessActor!, dto);
   }
 
   @Post('v1/access/check')

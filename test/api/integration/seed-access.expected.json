@@ -1,0 +1,520 @@
+{
+  "products": [
+    {
+      "code": "access",
+      "name": "Hemia Access",
+      "audience": "internal",
+      "provisioning_mode": "none",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "agents",
+      "name": "Hemia Agents",
+      "audience": "mixed",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "automate",
+      "name": "Hemia Automate",
+      "audience": "internal",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "billing",
+      "name": "Hemia Billing",
+      "audience": "internal",
+      "provisioning_mode": "none",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "cdn",
+      "name": "Hemia CDN",
+      "audience": "internal",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "console",
+      "name": "Hemia Console",
+      "audience": "internal",
+      "provisioning_mode": "none",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "docs",
+      "name": "Hemia Docs",
+      "audience": "internal",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "helpdesk",
+      "name": "Hemia Helpdesk",
+      "audience": "internal",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "horus",
+      "name": "Horus",
+      "audience": "internal",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "legal",
+      "name": "Hemia Legal",
+      "audience": "internal",
+      "provisioning_mode": "none",
+      "status": "active",
+      "metadata": {}
+    },
+    {
+      "code": "loop",
+      "name": "Hemia Loop",
+      "audience": "customer",
+      "provisioning_mode": "event_driven",
+      "status": "active",
+      "metadata": {}
+    }
+  ],
+  "permissions": [
+    {
+      "code": "*",
+      "name": "*",
+      "description": "*",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "audit.read",
+      "name": "audit.read",
+      "description": "audit.read",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "membership.invite",
+      "name": "membership.invite",
+      "description": "membership.invite",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "membership.read",
+      "name": "membership.read",
+      "description": "membership.read",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "membership.revoke",
+      "name": "membership.revoke",
+      "description": "membership.revoke",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "membership.suspend",
+      "name": "membership.suspend",
+      "description": "membership.suspend",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "organization.archive",
+      "name": "organization.archive",
+      "description": "organization.archive",
+      "scope": "organization",
+      "status": "active"
+    },
+    {
+      "code": "organization.read",
+      "name": "organization.read",
+      "description": "organization.read",
+      "scope": "organization",
+      "status": "active"
+    },
+    {
+      "code": "organization.update",
+      "name": "organization.update",
+      "description": "organization.update",
+      "scope": "organization",
+      "status": "active"
+    },
+    {
+      "code": "product_access.disable",
+      "name": "product_access.disable",
+      "description": "product_access.disable",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "product_access.enable",
+      "name": "product_access.enable",
+      "description": "product_access.enable",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "product_access.read",
+      "name": "product_access.read",
+      "description": "product_access.read",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "product_access.suspend",
+      "name": "product_access.suspend",
+      "description": "product_access.suspend",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "role.assign",
+      "name": "role.assign",
+      "description": "role.assign",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "role.read",
+      "name": "role.read",
+      "description": "role.read",
+      "scope": "platform",
+      "status": "active"
+    },
+    {
+      "code": "role.revoke",
+      "name": "role.revoke",
+      "description": "role.revoke",
+      "scope": "platform",
+      "status": "active"
+    }
+  ],
+  "roles": [
+    {
+      "code": "engineering",
+      "name": "engineering",
+      "description": "engineering",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "finance",
+      "name": "finance",
+      "description": "finance",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "legal",
+      "name": "legal",
+      "description": "legal",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "organization_admin",
+      "name": "organization_admin",
+      "description": "organization_admin",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "organization_member",
+      "name": "organization_member",
+      "description": "organization_member",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "organization_owner",
+      "name": "organization_owner",
+      "description": "organization_owner",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "platform_auditor",
+      "name": "platform_auditor",
+      "description": "platform_auditor",
+      "scope": "platform",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "platform_super_admin",
+      "name": "platform_super_admin",
+      "description": "platform_super_admin",
+      "scope": "platform",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "platform_support",
+      "name": "platform_support",
+      "description": "platform_support",
+      "scope": "platform",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    },
+    {
+      "code": "support",
+      "name": "support",
+      "description": "support",
+      "scope": "organization",
+      "status": "active",
+      "is_system": true,
+      "organization_id": null
+    }
+  ],
+  "role_permissions": [
+    {
+      "role": "engineering",
+      "permission": "membership.read"
+    },
+    {
+      "role": "engineering",
+      "permission": "organization.read"
+    },
+    {
+      "role": "engineering",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "finance",
+      "permission": "membership.read"
+    },
+    {
+      "role": "finance",
+      "permission": "organization.read"
+    },
+    {
+      "role": "finance",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "legal",
+      "permission": "membership.read"
+    },
+    {
+      "role": "legal",
+      "permission": "organization.read"
+    },
+    {
+      "role": "legal",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "audit.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "membership.invite"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "membership.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "membership.revoke"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "membership.suspend"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "organization.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "organization.update"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "role.assign"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "role.read"
+    },
+    {
+      "role": "organization_admin",
+      "permission": "role.revoke"
+    },
+    {
+      "role": "organization_member",
+      "permission": "membership.read"
+    },
+    {
+      "role": "organization_member",
+      "permission": "organization.read"
+    },
+    {
+      "role": "organization_member",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "audit.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "membership.invite"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "membership.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "membership.revoke"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "membership.suspend"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "organization.archive"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "organization.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "organization.update"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "product_access.disable"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "product_access.enable"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "product_access.suspend"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "role.assign"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "role.read"
+    },
+    {
+      "role": "organization_owner",
+      "permission": "role.revoke"
+    },
+    {
+      "role": "platform_auditor",
+      "permission": "audit.read"
+    },
+    {
+      "role": "platform_auditor",
+      "permission": "membership.read"
+    },
+    {
+      "role": "platform_auditor",
+      "permission": "organization.read"
+    },
+    {
+      "role": "platform_auditor",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "platform_auditor",
+      "permission": "role.read"
+    },
+    {
+      "role": "platform_super_admin",
+      "permission": "*"
+    },
+    {
+      "role": "platform_support",
+      "permission": "audit.read"
+    },
+    {
+      "role": "platform_support",
+      "permission": "membership.invite"
+    },
+    {
+      "role": "platform_support",
+      "permission": "membership.read"
+    },
+    {
+      "role": "platform_support",
+      "permission": "membership.suspend"
+    },
+    {
+      "role": "platform_support",
+      "permission": "organization.read"
+    },
+    {
+      "role": "platform_support",
+      "permission": "product_access.read"
+    },
+    {
+      "role": "platform_support",
+      "permission": "product_access.suspend"
+    },
+    {
+      "role": "platform_support",
+      "permission": "role.read"
+    },
+    {
+      "role": "support",
+      "permission": "membership.read"
+    },
+    {
+      "role": "support",
+      "permission": "organization.read"
+    },
+    {
+      "role": "support",
+      "permission": "product_access.read"
+    }
+  ]
+}

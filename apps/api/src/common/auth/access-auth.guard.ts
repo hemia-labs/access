@@ -30,9 +30,10 @@ export class AccessAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<AccessRequest>();
     const token = this.bearerToken(request.headers.authorization);
-    request.accessActor = token.split('.').length === 3
-      ? await this.jwtActor(token)
-      : await this.serviceActor(token);
+    request.accessActor =
+      token.split('.').length === 3
+        ? await this.jwtActor(token)
+        : await this.serviceActor(token);
 
     await this.authorize(context, request);
     return true;
@@ -40,7 +41,7 @@ export class AccessAuthGuard implements CanActivate {
 
   private async jwtActor(token: string) {
     const unverified = this.decodePayload(token);
-    const issuer = String(unverified.iss ?? '');
+    const issuer = typeof unverified.iss === 'string' ? unverified.iss : '';
     const trusted = this.trustedIssuer(issuer);
 
     if (!trusted) {
@@ -68,12 +69,57 @@ export class AccessAuthGuard implements CanActivate {
       );
     });
 
-    if (protectedHeader.alg !== 'RS256' || !payload.sub) {
+    if (
+      protectedHeader.alg !== 'RS256' ||
+      typeof payload.sub !== 'string' ||
+      !payload.sub.trim()
+    ) {
       throw new AccessError(
         'ACCESS_TOKEN_INVALID',
         'JWT must include RS256 algorithm and sub',
         HttpStatus.UNAUTHORIZED,
       );
+    }
+
+    if (payload.grant_type === 'client_credentials') {
+      const { issuer } = this.config.getOrThrow<{ issuer: string }>(
+        'access.identityIntrospection',
+      );
+      const audience = this.config.get<string>(
+        'access.expectedAudience',
+        'access-api',
+      );
+      const now = Math.floor(Date.now() / 1000);
+      if (
+        payload.iss !== issuer ||
+        payload.aud !== audience ||
+        protectedHeader.typ !== 'at+jwt' ||
+        typeof protectedHeader.kid !== 'string' ||
+        !protectedHeader.kid.trim() ||
+        typeof payload.client_id !== 'string' ||
+        !payload.client_id.trim() ||
+        payload.sub !== payload.client_id ||
+        typeof payload.scope !== 'string' ||
+        typeof payload.jti !== 'string' ||
+        !payload.jti.trim() ||
+        typeof payload.iat !== 'number' ||
+        !Number.isFinite(payload.iat) ||
+        typeof payload.exp !== 'number' ||
+        !Number.isFinite(payload.exp) ||
+        payload.iat <= 0 ||
+        payload.exp <= payload.iat ||
+        payload.exp - payload.iat > 600 ||
+        payload.iat > now + 30 ||
+        payload.session_id !== undefined
+      ) {
+        throw new AccessError(
+          'ACCESS_TOKEN_INVALID',
+          'Service JWT contract is invalid',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      return this.serviceActor(token, payload.client_id);
     }
 
     const identity = await this.identityReferences.findOrCreateFromClaims({
@@ -93,7 +139,7 @@ export class AccessAuthGuard implements CanActivate {
     };
   }
 
-  private async serviceActor(token: string) {
+  private async serviceActor(token: string, expectedClientId?: string) {
     const introspection = this.config.getOrThrow<{
       url: string;
       issuer: string;
@@ -108,7 +154,7 @@ export class AccessAuthGuard implements CanActivate {
       );
     }
 
-    const result = await fetch(introspection.url, {
+    const result = (await fetch(introspection.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -118,24 +164,35 @@ export class AccessAuthGuard implements CanActivate {
       }),
       signal: AbortSignal.timeout(3_000),
     })
-      .then(async (response) => (response.ok ? response.json() : null))
-      .catch(() => null) as {
-        active?: boolean;
-        aud?: string;
-        client_id?: string;
-        exp?: number;
-        scope?: string;
-      } | null;
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data: unknown = await response.json();
+        return data;
+      })
+      .catch(() => null)) as {
+      active?: boolean;
+      aud?: string;
+      client_id?: string;
+      exp?: number;
+      scope?: string;
+      session_id?: unknown;
+    } | null;
 
     const expectedAudience = this.config.get<string>(
       'access.expectedAudience',
       'access-api',
     );
     if (
-      !result?.active ||
+      result?.active !== true ||
       result.aud !== expectedAudience ||
-      !result.client_id ||
-      !result.exp ||
+      typeof result.client_id !== 'string' ||
+      !result.client_id.trim() ||
+      (expectedClientId !== undefined &&
+        result.client_id !== expectedClientId) ||
+      typeof result.scope !== 'string' ||
+      typeof result.exp !== 'number' ||
+      !Number.isFinite(result.exp) ||
+      result.session_id != null ||
       result.exp * 1000 <= Date.now()
     ) {
       throw new AccessError(
@@ -164,10 +221,11 @@ export class AccessAuthGuard implements CanActivate {
   }
 
   private async authorize(context: ExecutionContext, request: AccessRequest) {
-    const requirement = this.reflector.getAllAndOverride<AccessPermissionRequirement>(
-      ACCESS_PERMISSION_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requirement =
+      this.reflector.getAllAndOverride<AccessPermissionRequirement>(
+        ACCESS_PERMISSION_KEY,
+        [context.getHandler(), context.getClass()],
+      );
     if (!requirement) return;
 
     const actor = request.accessActor!;
@@ -212,7 +270,7 @@ export class AccessAuthGuard implements CanActivate {
     organizationId?: string,
     platformOnly = false,
   ) {
-    const rows = await this.dataSource.query(
+    const rows = await this.dataSource.query<Array<{ code: string }>>(
       `SELECT permission.code
        FROM organization_memberships membership
        JOIN organizations organization ON organization.id = membership.organization_id
@@ -229,8 +287,11 @@ export class AccessAuthGuard implements CanActivate {
          AND ($2::uuid IS NULL OR membership.organization_id = $2::uuid)
          AND ($3::boolean = false OR role.scope = 'platform')`,
       [identityReferenceId, organizationId ?? null, platformOnly],
-    ) as Array<{ code: string }>;
-    return this.matches(rows.map((row) => row.code), permission);
+    );
+    return this.matches(
+      rows.map((row) => row.code),
+      permission,
+    );
   }
 
   private scopes(scope?: string) {
@@ -242,7 +303,8 @@ export class AccessAuthGuard implements CanActivate {
       (candidate) =>
         candidate === '*' ||
         candidate === permission ||
-        (candidate.endsWith('.*') && permission.startsWith(candidate.slice(0, -1))),
+        (candidate.endsWith('.*') &&
+          permission.startsWith(candidate.slice(0, -1))),
     );
   }
 
@@ -268,7 +330,17 @@ export class AccessAuthGuard implements CanActivate {
       );
     }
     try {
-      return JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+      const payload: unknown = JSON.parse(
+        Buffer.from(encoded, 'base64url').toString('utf8'),
+      );
+      if (
+        typeof payload !== 'object' ||
+        payload === null ||
+        Array.isArray(payload)
+      ) {
+        throw new Error('JWT payload must be an object');
+      }
+      return payload;
     } catch {
       throw new AccessError(
         'ACCESS_TOKEN_INVALID',

@@ -21,11 +21,7 @@ export type OrganizationProductStatus =
   | 'failed'
   | 'expired';
 export type OrganizationProductSource =
-  | 'manual'
-  | 'billing'
-  | 'contract'
-  | 'migration'
-  | 'internal';
+  'manual' | 'billing' | 'contract' | 'migration' | 'internal';
 
 @Entity('organization_products')
 @Index('ux_org_products', ['organizationId', 'productId'], { unique: true })

@@ -22,6 +22,8 @@ export default registerAs('access', () => {
   const port = Number(process.env.PORT ?? 3019);
 
   return {
+    bindHost: process.env.ACCESS_BIND_HOST || undefined,
+    legalServiceClientId: process.env.LEGAL_SERVICE_CLIENT_ID ?? '',
     port,
     expectedAudience: defaultAudience,
     issuer: process.env.ACCESS_ISSUER ?? `http://localhost:${port}`,
@@ -35,7 +37,8 @@ export default registerAs('access', () => {
       url:
         process.env.IDENTITY_INTROSPECTION_URL ??
         'http://localhost:4000/oauth/introspect',
-      issuer: process.env.IDENTITY_ISSUER ?? issuers[0] ?? 'http://localhost:4000',
+      issuer:
+        process.env.IDENTITY_ISSUER ?? issuers[0] ?? 'http://localhost:4000',
       clientId: process.env.IDENTITY_INTROSPECTION_CLIENT_ID ?? 'access',
       clientSecret: process.env.IDENTITY_INTROSPECTION_CLIENT_SECRET,
     },

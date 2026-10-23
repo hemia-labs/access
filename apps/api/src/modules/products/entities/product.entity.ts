@@ -1,7 +1,15 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 export type ProductAudience = 'internal' | 'customer' | 'mixed';
-export type ProductProvisioningMode = 'manual' | 'event_driven' | 'api_callback' | 'none';
+export type ProductProvisioningMode =
+  'manual' | 'event_driven' | 'api_callback' | 'none';
 export type ProductStatus = 'active' | 'deprecated' | 'disabled';
 
 @Entity('products')

@@ -1,13 +1,14 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 export type OutboxStatus =
-  | 'pending'
-  | 'publishing'
-  | 'published'
-  | 'failed'
-  | 'dead_letter';
+  'pending' | 'publishing' | 'published' | 'failed' | 'dead_letter';
 
 @Entity('outbox_events')
+@Index('ix_access_outbox_status_attempt', [
+  'status',
+  'nextAttemptAt',
+  'occurredAt',
+])
 export class OutboxEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -24,7 +25,7 @@ export class OutboxEvent {
   @Column({ type: 'jsonb' })
   payload: Record<string, unknown>;
 
-  @Column({ default: 'pending' })
+  @Column({ type: 'varchar', default: 'pending' })
   status: OutboxStatus;
 
   @Column({ default: 0 })
