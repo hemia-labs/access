@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import accessConfig from './config/access.config';
 import databaseConfig from './config/database.config';
 import eventBusConfig from './config/event-bus.config';
+import { environmentFile } from './config/env-file';
 import { RequestLoggingMiddleware } from './common/observability/request-logging.middleware';
 import { DatabaseModule } from './database/database.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -22,7 +23,7 @@ import { EventBusModule } from './modules/event-bus/event-bus.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      envFilePath: environmentFile(),
       load: [accessConfig, databaseConfig, eventBusConfig],
     }),
     DatabaseModule,

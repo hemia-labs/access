@@ -2,9 +2,14 @@ node_modules/
 dist/
 .next/
 .env*.local
+.env.production
 
 # Local development signing keys
 apps/api/.keys/
 
 # Runtime event logs
 *.log.jsonl
+
+# Python deployment tools
+__pycache__/
+*.pyc

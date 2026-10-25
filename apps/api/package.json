@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "",
   "author": "",
   "private": true,
@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/src/main.js",
+    "start:prod": "NODE_ENV=production node dist/src/main.js",
     "lint": "cd ../.. && apps/api/node_modules/.bin/eslint --config apps/api/eslint.config.mjs \"apps/api/{src,apps,libs}/**/*.ts\" \"test/api/**/*.ts\" --fix",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:console-context": "node ../../test/api/integration/console-context.integration.cjs",

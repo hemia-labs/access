@@ -1,0 +1,82 @@
+name: hemia-access
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  api:
+    image: hemia-access-api:${ACCESS_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ${ACCESS_ENV_FILE:-./apps/api/.env.production}
+        format: raw
+    environment:
+      NODE_ENV: production
+      PORT: "3019"
+      ACCESS_BIND_HOST: 0.0.0.0
+      ACCESS_ISSUER: ${ACCESS_PUBLIC_URL:-https://access.hemia.cloud}
+      ACCESS_JWKS_PRIVATE_KEY_PATH: /run/secrets/access-jwks-private.pem
+      NODE_OPTIONS: --max-old-space-size=256
+    volumes:
+      - type: bind
+        source: ${ACCESS_JWKS_PRIVATE_KEY_FILE:-./apps/api/.keys/access-jwks-private.pem}
+        target: /run/secrets/access-jwks-private.pem
+        read_only: true
+        bind:
+          create_host_path: false
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3019/health/ready', {signal: AbortSignal.timeout(4000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 6
+
+  web:
+    image: hemia-access-web:${ACCESS_IMAGE_TAG:-local}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      ACCESS_API_URL: http://api:3019
+      NODE_OPTIONS: --max-old-space-size=256
+    ports:
+      - "${ACCESS_BIND_ADDRESS:-127.0.0.1}:${ACCESS_HTTP_PORT:-8081}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /app/apps/web/.next/cache:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health/ready', {signal: AbortSignal.timeout(4000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

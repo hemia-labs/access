@@ -17,7 +17,7 @@ export class RequestLoggingMiddleware implements NestMiddleware {
           service: 'hemia-access',
           trace_id: req.traceId,
           method: req.method,
-          path: req.originalUrl,
+          path: req.originalUrl.split('?')[0],
           status: res.statusCode,
           duration_ms: Date.now() - startedAt,
         }),

@@ -26,8 +26,6 @@ export class MembershipsService {
     private readonly dataSource: DataSource,
     @InjectRepository(Membership)
     private readonly repository: Repository<Membership>,
-    @InjectRepository(Organization)
-    private readonly organizations: Repository<Organization>,
     private readonly identityReferences: IdentityReferencesService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
