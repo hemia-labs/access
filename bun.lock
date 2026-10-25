@@ -10,7 +10,7 @@
     },
     "apps/api": {
       "name": "api",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@hemia/event-bus": "0.0.3",
         "@nestjs/common": "^11.0.1",
@@ -52,7 +52,7 @@
     },
     "apps/web": {
       "name": "web",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "dependencies": {
         "@base-ui/react": "^1.5.0",
         "class-variance-authority": "^0.7.1",
