@@ -10,6 +10,12 @@ Access no ejecuta login de usuario. Recibe tokens emitidos por Hemia ID o Custom
 
 ## Configuracion
 
+La API y los comandos de migraciones, seeds y bootstrap cargan `.env.production`
+si `NODE_ENV=production`; en desarrollo cargan `.env.local`. Los archivos se
+buscan desde `apps/api`, sin mezclar valores de otros archivos `.env`.
+Las variables ya definidas en el entorno tienen prioridad. `NODE_ENV` debe
+definirse antes de iniciar el proceso; `start:prod` lo establece en `production`.
+
 `src/config/access.config.ts` contiene toda la configuracion de Access, incluida la validacion de tokens entrantes:
 
 ```txt

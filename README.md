@@ -73,6 +73,13 @@ Reglas:
 bun run build      # build de todas las apps
 ```
 
+## Releases y despliegue
+
+CI, Changesets, imagenes en registry privado y deploy por Tailscale/SSH estan
+documentados en [CI/CD de Access](docs/access-ci-cd.md). API y panel comparten
+version: tag `access-vX.Y.Z`, Release `Access X.Y.Z`. `bun run check` ejecuta las
+validaciones y el smoke Docker con dependencias desechables.
+
 ## Estructura
 
 ```

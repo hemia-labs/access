@@ -211,7 +211,6 @@ describe('Organization eligibility trust boundary', () => {
     const service = new MembershipsService(
       f.dataSource as never,
       {} as never,
-      {} as never,
       identities as never,
       f.audit,
       f.outbox as never,
@@ -298,7 +297,6 @@ describe('Organization eligibility trust boundary', () => {
       const f = fixture();
       const service = new MembershipsService(
         f.dataSource as never,
-        {} as never,
         {} as never,
         {} as never,
         f.audit,

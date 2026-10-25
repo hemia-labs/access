@@ -1,0 +1,148 @@
+name: Access deployment
+run-name: Access ${{ inputs.operation }} ${{ inputs.release_tag }}
+
+on:
+  workflow_call:
+    inputs:
+      operation:
+        type: string
+        default: deploy
+      release_tag:
+        type: string
+        required: true
+      automatic:
+        type: boolean
+        default: false
+      acknowledge_schema:
+        type: boolean
+        default: false
+      backup_confirmation:
+        type: string
+        default: ''
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'Deploy, roll back images, or explicitly run migrations (never seeds)'
+        type: choice
+        options: [deploy, rollback, migrate]
+        default: deploy
+      release_tag:
+        description: 'Published release: access-vMAJOR.MINOR.PATCH'
+        required: true
+        type: string
+      acknowledge_schema:
+        description: 'Rollback only: I reviewed compatibility with the current database schema'
+        type: boolean
+        default: false
+      backup_confirmation:
+        description: 'Migrate only: type I_HAVE_A_BACKUP after verifying the backup'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: access-prod
+  cancel-in-progress: false
+
+jobs:
+  enabled:
+    if: github.repository == 'hemia-labs/access' && github.ref == 'refs/heads/main'
+    environment: prod
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Check automatic deployment setting in prod
+        id: check
+        env:
+          AUTOMATIC: ${{ inputs.automatic || false }}
+          ENABLE_DEPLOY: ${{ vars.ENABLE_ACCESS_DEPLOY }}
+        run: |
+          if [[ "$AUTOMATIC" == 'true' && "$ENABLE_DEPLOY" != 'true' ]]; then
+            echo 'deploy=false' >> "$GITHUB_OUTPUT"
+            echo 'Release published. Automatic deployment is disabled in prod.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: enabled
+    if: needs.enabled.outputs.deploy == 'true'
+    environment: prod
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
+    steps:
+      - name: Set temporary credential paths
+        run: |
+          echo "DEPLOY_KEY_FILE=$RUNNER_TEMP/access-deploy-key" >> "$GITHUB_ENV"
+          echo "DEPLOY_KNOWN_HOSTS_FILE=$RUNNER_TEMP/access-known-hosts" >> "$GITHUB_ENV"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate configuration and requested release
+        env:
+          ENABLE_DEPLOY: ${{ vars.ENABLE_ACCESS_DEPLOY }}
+          TS_CLIENT_ID: ${{ vars.TS_CLIENT_ID }}
+          TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          OPERATION: ${{ inputs.operation }}
+          BACKUP_CONFIRMATION: ${{ inputs.backup_confirmation }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+          assert os.environ['ENABLE_DEPLOY'] == 'true', 'Set ENABLE_ACCESS_DEPLOY=true after provisioning'
+          for key in ['REGISTRY_HOST','DEPLOY_HOST','DEPLOY_USER','DEPLOY_PATH','TS_CLIENT_ID','TS_AUDIENCE','PRIVATE_KEY','KNOWN_HOSTS']:
+              assert os.environ.get(key), 'Missing configuration: ' + key
+          assert re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', os.environ['RELEASE_TAG'])
+          if os.environ['OPERATION'] == 'migrate':
+              assert os.environ['BACKUP_CONFIRMATION'] == 'I_HAVE_A_BACKUP', 'Verify backup before migrating'
+          for name,value in [('DEPLOY_KEY_FILE','PRIVATE_KEY'),('DEPLOY_KNOWN_HOSTS_FILE','KNOWN_HOSTS')]:
+              path=Path(os.environ[name]); path.write_text(os.environ[value]+'\n'); path.chmod(0o600)
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq 'if .draft or .prerelease or (.immutable != true) then error("Expected a published immutable stable release") else .tag_name end'
+          gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/access-release" \
+            --pattern release.json --pattern compose.json --pattern access-deploy.py
+          python3 scripts/access-release.py validate "$RELEASE_TAG" "$RUNNER_TEMP/access-release"
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG" refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$RELEASE_TAG^{commit}" origin/main
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          manifest=json.loads((Path(os.environ['RUNNER_TEMP'])/'access-release/release.json').read_text())
+          commit=subprocess.check_output(['git','rev-parse',os.environ['RELEASE_TAG']+'^{commit}'],text=True).strip()
+          assert commit == manifest['commit'], 'Tag and release commit differ'
+          PY
+      - name: Join Tailscale with GitHub OIDC
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:hemia-ci
+      - name: Deploy the selected release through SSH
+        env:
+          OPERATION: ${{ inputs.operation }}
+          ACKNOWLEDGE_SCHEMA: ${{ inputs.acknowledge_schema }}
+          BACKUP_CONFIRMATION: ${{ inputs.backup_confirmation }}
+        run: |
+          python3 scripts/access-remote.py "$OPERATION" "$RELEASE_TAG" "$RUNNER_TEMP/access-release"
+          echo "Access $OPERATION completed: $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary SSH credentials
+        if: always()
+        run: rm -f -- "$DEPLOY_KEY_FILE" "$DEPLOY_KNOWN_HOSTS_FILE"

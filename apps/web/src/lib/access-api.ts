@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-const API_URL = process.env.NEXT_PUBLIC_ACCESS_API_URL ?? "http://localhost:3019";
+const API_URL = process.env.ACCESS_API_URL ?? "http://localhost:3019";
 
 export type AccessOrganization = {
   id: string;

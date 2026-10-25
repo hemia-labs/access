@@ -88,7 +88,6 @@ describe('MembershipsService', () => {
       } as never,
       {} as never,
       {} as never,
-      {} as never,
       { record: jest.fn() },
       { record: jest.fn(), recordMany: jest.fn() } as never,
       { key: jest.fn(), del: jest.fn() } as never,
