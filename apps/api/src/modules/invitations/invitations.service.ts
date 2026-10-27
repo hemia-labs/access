@@ -2,7 +2,7 @@ import {
   protectInternalOrganization,
   requirePlatformAdministrator,
 } from '../../common/auth/platform-administration';
-import { HttpStatus, Injectable, Optional } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { DataSource, IsNull, Repository } from 'typeorm';
@@ -10,7 +10,9 @@ import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
 import { AccessContextCacheService } from '../access-context/cache/access-context-cache.service';
 import { AuditService } from '../audit/audit.service';
+import { IdentityReference } from '../identity-references/entities/identity-reference.entity';
 import { IdentityReferencesService } from '../identity-references/identity-references.service';
+import { Organization } from '../organizations/entities/organization.entity';
 import { Membership } from '../memberships/entities/membership.entity';
 import { OutboxService } from '../outbox/outbox.service';
 import { MembershipRole } from '../roles/entities/membership-role.entity';
@@ -24,6 +26,7 @@ import { Invitation } from './entities/invitation.entity';
 
 @Injectable()
 export class InvitationsService {
+  private readonly logger = new Logger(InvitationsService.name);
   // ponytail: single-process fallback, Redis rate limiting when shared limits matter.
   private readonly attempts = new Map<
     string,
@@ -251,12 +254,29 @@ export class InvitationsService {
           membership_id: membership.id,
         },
       });
-      return { accepted: true, membership_id: membership.id };
+      return {
+        response: { accepted: true, membership_id: membership.id },
+        email: identity.emailSnapshot,
+        context: {
+          organizationName: organization.name,
+          recipientName: identity.displayNameSnapshot,
+        },
+      };
     });
     await this.contextCache.del(
       this.contextCache.key(actor.identityReferenceId),
     );
-    return result;
+    if (this.mail && result.email) {
+      try {
+        await this.mail.sendWelcome(result.email, result.context);
+      } catch {
+        // shortcut: welcome is best effort after commit; add outbox retries if guaranteed delivery is required.
+        this.logger.warn(
+          'Welcome email delivery failed after invitation acceptance',
+        );
+      }
+    }
+    return result.response;
   }
 
   async revoke(actor: AccessActor, id: string) {
@@ -322,10 +342,20 @@ export class InvitationsService {
   private async deliver(invitation: Invitation, token: string) {
     try {
       if (!this.mail) throw new Error('Email not configured');
+      const organization = await this.dataSource
+        .getRepository(Organization)
+        .findOneByOrFail({ id: invitation.organizationId });
+      const inviter = await this.dataSource
+        .getRepository(IdentityReference)
+        .findOneBy({ id: invitation.createdByIdentityId });
       await this.mail.send(
         invitation.emailNormalized,
         token,
         invitation.expiresAt,
+        {
+          organizationName: organization.name,
+          inviterName: inviter?.displayNameSnapshot,
+        },
       );
       return { ...this.safe(invitation), delivery: 'sent' as const };
     } catch {

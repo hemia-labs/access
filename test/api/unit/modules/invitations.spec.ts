@@ -48,7 +48,11 @@ function fixture(email: string | null = 'invitee@example.test') {
         : entity === Organization
           ? {
               findOne: () =>
-                Promise.resolve({ status: 'active', type: 'customer' }),
+                Promise.resolve({
+                  status: 'active',
+                  type: 'customer',
+                  name: 'Hemia',
+                }),
             }
           : entity === Role
             ? {
@@ -65,6 +69,7 @@ function fixture(email: string | null = 'invitee@example.test') {
     ),
   };
   const cache = { key: jest.fn((id: string) => id), del: jest.fn() };
+  const mail = { sendWelcome: jest.fn().mockResolvedValue(undefined) };
   const service = new InvitationsService(
     {
       transaction: (fn: (m: unknown) => unknown) =>
@@ -75,8 +80,17 @@ function fixture(email: string | null = 'invitee@example.test') {
     { record: jest.fn() },
     { record: jest.fn() } as never,
     cache as never,
+    mail as never,
   );
-  return { service, invitation, invitations, identities, memberships, cache };
+  return {
+    service,
+    invitation,
+    invitations,
+    identities,
+    memberships,
+    cache,
+    mail,
+  };
 }
 describe('Invitation acceptance', () => {
   it.each([null, 'other@example.test'])(
@@ -87,6 +101,7 @@ describe('Invitation acceptance', () => {
         code: 'ACCESS_INVITATION_EMAIL_MISMATCH',
       });
       expect(f.memberships.save).not.toHaveBeenCalled();
+      expect(f.mail.sendWelcome).not.toHaveBeenCalled();
       expect(f.invitation.status).toBe('pending');
     },
   );
@@ -105,6 +120,20 @@ describe('Invitation acceptance', () => {
       code: 'ACCESS_INVITATION_INVALID',
     });
     expect(f.memberships.save).toHaveBeenCalledTimes(1);
+    expect(f.mail.sendWelcome).toHaveBeenCalledTimes(1);
+    expect(f.mail.sendWelcome).toHaveBeenCalledWith(
+      'invitee@example.test',
+      expect.objectContaining({ organizationName: 'Hemia' }),
+    );
+  });
+  it('does not undo accepted membership when welcome delivery fails', async () => {
+    const f = fixture();
+    f.mail.sendWelcome.mockRejectedValue(new Error('SES failed'));
+    await expect(f.service.accept(actor, { token })).resolves.toEqual({
+      accepted: true,
+      membership_id: 'membership',
+    });
+    expect(f.invitation.status).toBe('accepted');
   });
   it.each(['revoked', 'expired', 'accepted'])(
     'rejects %s invitations',

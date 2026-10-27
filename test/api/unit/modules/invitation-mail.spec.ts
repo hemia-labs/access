@@ -8,12 +8,14 @@ const config = new ConfigService({
     appName: 'Hemia',
     appUrl: 'https://id.example.test',
     supportEmail: 'support@hemia.dev',
+    consoleUrl: 'https://console.example.test',
     ses: {
       fromName: 'Hemia',
       fromAuth: 'auth@hemia-access.hemia.dev',
       replyTo: 'support@hemia.dev',
       configurationSetAuth: 'hemia-dev-auth',
       invitationTemplate: 'hemia-access-dev-invitation',
+      welcomeTemplate: 'hemia-access-dev-welcome',
     },
   },
 });
@@ -53,6 +55,42 @@ describe('SES v2 invitations (Balanz contract)', () => {
       'https://id.example.test/invitations#token=secret-token',
     );
     expect(data.app_name).toBe('Hemia');
+  });
+  it('escapes user data in HTML while preserving readable text and subject values', async () => {
+    const { service, send } = fixture();
+    await service.send(
+      'invitee@example.test',
+      'token',
+      new Date('2030-01-01'),
+      {
+        organizationName: 'R&D <equipo>\r\nPrueba',
+        inviterName: '<img src=x>',
+      },
+    );
+    const command = (send.mock.calls as unknown[][])[0][0] as SendEmailCommand;
+    const data = JSON.parse(
+      command.input.Content!.Template!.TemplateData!,
+    ) as Record<string, string>;
+    expect(data.organization_name).toBe('R&D <equipo>  Prueba');
+    expect(data.organization_name_html).toBe('R&amp;D &lt;equipo&gt;  Prueba');
+    expect(data.inviter_name_html).toBe('&lt;img src=x&gt;');
+    expect(data.expiration_date).toContain('hora de Ciudad de México');
+  });
+  it('sends welcome to the accepted email with the Console URL and no invitation token', async () => {
+    const { service, send } = fixture();
+    await service.sendWelcome('invitee@example.test', {
+      organizationName: 'Hemia',
+    });
+    const command = (send.mock.calls as unknown[][])[0][0] as SendEmailCommand;
+    expect(command.input.Content!.Template!.TemplateName).toBe(
+      'hemia-access-dev-welcome',
+    );
+    const data = JSON.parse(
+      command.input.Content!.Template!.TemplateData!,
+    ) as Record<string, string>;
+    expect(data.workspace_url).toBe('https://console.example.test');
+    expect(data.recipient_email).toBe('invitee@example.test');
+    expect(data.invitation_url).toBeUndefined();
   });
   it('reports delivery failure without exposing AWS errors or the invitation token', async () => {
     const { service, send } = fixture();
