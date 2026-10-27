@@ -8,6 +8,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { AccessPermission } from '../../common/auth/access-permission.decorator';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
 import type { AccessRequest } from '../../common/auth/access-actor.type';
 import {
@@ -31,11 +32,13 @@ export class InvitationsController {
   }
 
   @Get('v1/organizations/:organizationId/invitations')
+  @AccessPermission('membership.read', { global: true })
   findAll(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
     return this.invitations.findAll(organizationId);
   }
 
   @Get('v1/invitations/:invitationId')
+  @AccessPermission('membership.read', { global: true })
   findOne(@Param('invitationId', ParseUUIDPipe) invitationId: string) {
     return this.invitations.findOne(invitationId);
   }

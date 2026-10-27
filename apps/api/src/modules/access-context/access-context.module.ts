@@ -25,6 +25,6 @@ import { ConsoleAuthorizationService } from './authorization/console-authorizati
     AccessJwksService,
     AccessAuthGuard,
   ],
-  exports: [AccessContextService],
+  exports: [AccessContextService, AccessJwksService],
 })
 export class AccessContextModule {}

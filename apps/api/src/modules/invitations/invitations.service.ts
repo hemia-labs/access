@@ -1,5 +1,8 @@
-import { protectInternalOrganization } from '../../common/auth/platform-administration';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import {
+  protectInternalOrganization,
+  requirePlatformAdministrator,
+} from '../../common/auth/platform-administration';
+import { HttpStatus, Injectable, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { DataSource, IsNull, Repository } from 'typeorm';
@@ -16,6 +19,7 @@ import {
   AcceptInvitationDto,
   CreateInvitationDto,
 } from './dtos/invitation.dto';
+import { InvitationMailService } from './invitation-mail.service';
 import { Invitation } from './entities/invitation.entity';
 
 @Injectable()
@@ -34,19 +38,21 @@ export class InvitationsService {
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
     private readonly contextCache: AccessContextCacheService,
+    @Optional() private readonly mail?: InvitationMailService,
   ) {}
 
-  findAll(organizationId: string) {
-    return this.invitations.find({
+  async findAll(organizationId: string) {
+    const invitations = await this.invitations.find({
       where: { organizationId },
       order: { createdAt: 'DESC' },
     });
+    return invitations.map((item) => this.safe(item));
   }
 
   async findOne(id: string) {
     const invitation = await this.invitations.findOneBy({ id });
     if (!invitation) throw this.notFound('Invitation not found');
-    return invitation;
+    return this.safe(invitation);
   }
 
   async create(
@@ -72,6 +78,13 @@ export class InvitationsService {
         dto.role_codes ?? ['organization_member'],
       );
       if (!organization) throw this.notFound('Organization not found');
+      await requirePlatformAdministrator(manager, actor);
+      if (organization.status !== 'active')
+        throw new AccessError(
+          'ACCESS_FORBIDDEN',
+          'Organization is not active',
+          HttpStatus.FORBIDDEN,
+        );
       const saved = await manager.getRepository(Invitation).save(
         manager.getRepository(Invitation).create({
           organizationId,
@@ -102,7 +115,7 @@ export class InvitationsService {
       return saved;
     });
 
-    return { ...this.safe(invitation), token };
+    return this.deliver(invitation, token);
   }
 
   async accept(actor: AccessActor, dto: AcceptInvitationDto) {
@@ -117,9 +130,14 @@ export class InvitationsService {
       );
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(Invitation);
-      const locked = await repository.findOneBy({ id: invitation.id });
+      const locked = await repository.findOne({
+        where: { id: invitation.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (locked && !this.same(tokenHash, locked.tokenHash))
+        throw this.notFound('Invitation is invalid');
       if (!locked) throw this.notFound('Invitation not found');
       if (locked.status !== 'pending') {
         throw new AccessError(
@@ -157,17 +175,15 @@ export class InvitationsService {
         locked.organizationId,
         locked.roleCodes,
       );
-      const identity = await this.identities.findOrCreateFromClaims({
-        issuer: actor.issuer,
-        subjectId: actor.subjectId,
-        identityType: actor.identityType,
-        email: null,
-        displayName: null,
-        avatarUrl: null,
-      });
+      const identity = await this.identities.findActiveById(
+        actor.identityReferenceId,
+      );
       if (
-        identity.emailSnapshot &&
-        this.normalize(identity.emailSnapshot) !== locked.emailNormalized
+        actor.identityType === 'service_account' ||
+        !identity.emailSnapshot ||
+        this.normalize(identity.emailSnapshot) !== locked.emailNormalized ||
+        (locked.identityIssuerHint &&
+          locked.identityIssuerHint !== actor.issuer)
       ) {
         throw new AccessError(
           'ACCESS_INVITATION_EMAIL_MISMATCH',
@@ -235,9 +251,12 @@ export class InvitationsService {
           membership_id: membership.id,
         },
       });
-      await this.contextCache.del(this.contextCache.key(identity.id));
       return { accepted: true, membership_id: membership.id };
     });
+    await this.contextCache.del(
+      this.contextCache.key(actor.identityReferenceId),
+    );
+    return result;
   }
 
   async revoke(actor: AccessActor, id: string) {
@@ -248,9 +267,12 @@ export class InvitationsService {
     const token = randomBytes(32).toString('base64url');
     const tokenHash = this.hash(token);
     const invitation = await this.dataSource.transaction(async (manager) => {
-      const item = await manager.getRepository(Invitation).findOneBy({ id });
+      const item = await manager
+        .getRepository(Invitation)
+        .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!item) throw this.notFound('Invitation not found');
       await protectInternalOrganization(manager, actor, item.organizationId);
+      await requirePlatformAdministrator(manager, actor);
       if (item.status !== 'pending') {
         throw new AccessError(
           'ACCESS_INVITATION_INVALID',
@@ -274,7 +296,42 @@ export class InvitationsService {
       });
       return saved;
     });
-    return { ...this.safe(invitation), token };
+    return this.deliver(invitation, token);
+  }
+
+  async preview(token: string) {
+    const invitation = await this.invitations.findOne({
+      where: { tokenHash: this.hash(token) },
+      relations: { organization: true },
+    });
+    if (
+      !invitation ||
+      invitation.status !== 'pending' ||
+      invitation.expiresAt <= new Date() ||
+      invitation.organization.status !== 'active'
+    ) {
+      throw new AccessError(
+        'ACCESS_INVITATION_INVALID',
+        'Invitation is invalid or expired',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return invitation;
+  }
+
+  private async deliver(invitation: Invitation, token: string) {
+    try {
+      if (!this.mail) throw new Error('Email not configured');
+      await this.mail.send(
+        invitation.emailNormalized,
+        token,
+        invitation.expiresAt,
+      );
+      return { ...this.safe(invitation), delivery: 'sent' as const };
+    } catch {
+      // The invitation is retained so an administrator can explicitly retry delivery.
+      return { ...this.safe(invitation), delivery: 'failed' as const };
+    }
   }
 
   private async updateStatus(
@@ -283,9 +340,18 @@ export class InvitationsService {
     status: 'revoked',
   ) {
     const invitation = await this.dataSource.transaction(async (manager) => {
-      const item = await manager.getRepository(Invitation).findOneBy({ id });
+      const item = await manager
+        .getRepository(Invitation)
+        .findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
       if (!item) throw this.notFound('Invitation not found');
       await protectInternalOrganization(manager, actor, item.organizationId);
+      await requirePlatformAdministrator(manager, actor);
+      if (item.status !== 'pending')
+        throw new AccessError(
+          'ACCESS_INVITATION_INVALID',
+          'Invitation is not pending',
+          HttpStatus.CONFLICT,
+        );
       item.status = status;
       item.revokedAt = new Date();
       const saved = await manager.getRepository(Invitation).save(item);
@@ -309,7 +375,7 @@ export class InvitationsService {
       });
       return saved;
     });
-    return invitation;
+    return this.safe(invitation);
   }
 
   private async requireInvitationRoles(
@@ -333,15 +399,25 @@ export class InvitationsService {
     }
   }
 
-  private rateLimit(key: string) {
+  rateLimit(key: string, limit = 10) {
     const now = Date.now();
+    if (this.attempts.size >= 10000) {
+      for (const [id, item] of this.attempts)
+        if (item.resetAt < now) this.attempts.delete(id);
+      if (this.attempts.size >= 10000 && !this.attempts.has(key))
+        throw new AccessError(
+          'ACCESS_RATE_LIMITED',
+          'Too many invitation attempts',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+    }
     const item = this.attempts.get(key);
     if (!item || item.resetAt < now) {
       this.attempts.set(key, { count: 1, resetAt: now + 60_000 });
       return;
     }
     item.count += 1;
-    if (item.count > 10) {
+    if (item.count > limit) {
       throw new AccessError(
         'ACCESS_RATE_LIMITED',
         'Too many invitation attempts',

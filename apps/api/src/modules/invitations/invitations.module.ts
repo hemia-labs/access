@@ -1,3 +1,9 @@
+import { SESv2Client } from '@aws-sdk/client-sesv2';
+import { ConfigService } from '@nestjs/config';
+import { createInvitationSesClient } from './invitation-email.provider';
+import { AccessContextModule } from '../access-context/access-context.module';
+import { InvitationMailService } from './invitation-mail.service';
+import { PublicInvitationsController } from './public-invitations.controller';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
@@ -26,8 +32,18 @@ import { InvitationsService } from './invitations.service';
     AuditModule,
     OutboxModule,
     AccessContextCacheModule,
+    AccessContextModule,
   ],
-  controllers: [InvitationsController],
-  providers: [InvitationsService, AccessAuthGuard],
+  controllers: [InvitationsController, PublicInvitationsController],
+  providers: [
+    InvitationsService,
+    AccessAuthGuard,
+    InvitationMailService,
+    {
+      provide: SESv2Client,
+      inject: [ConfigService],
+      useFactory: createInvitationSesClient,
+    },
+  ],
 })
 export class InvitationsModule {}

@@ -23,6 +23,17 @@ export class IdentityReferencesService {
     private readonly repository: Repository<IdentityReference>,
   ) {}
 
+  async findActiveById(id: string) {
+    const identity = await this.repository.findOneBy({ id, status: 'active' });
+    if (!identity)
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Identity is not active',
+        HttpStatus.FORBIDDEN,
+      );
+    return identity;
+  }
+
   async findOrCreateFromClaims(input: ClaimsInput) {
     const existing = await this.repository.findOne({
       where: { issuer: input.issuer, subjectId: input.subjectId },

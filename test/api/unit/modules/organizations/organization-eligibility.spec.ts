@@ -272,6 +272,14 @@ describe('Organization eligibility trust boundary', () => {
     };
     const invitations = { findOneBy: jest.fn().mockResolvedValue(invitation) };
     Object.assign(f.repository, invitations);
+    f.repository.findOne.mockImplementation(
+      (options?: { where?: { id?: string } }) =>
+        Promise.resolve(
+          options?.where?.id === invitation.id
+            ? (invitation as never)
+            : f.organization,
+        ),
+    );
     const identities = { findOrCreateFromClaims: jest.fn() };
     const service = new InvitationsService(
       f.dataSource as never,

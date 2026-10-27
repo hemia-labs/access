@@ -1,6 +1,7 @@
 import { SystemRolesModule } from './modules/system-roles/system-roles.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import emailConfig from './config/email.config';
 import accessConfig from './config/access.config';
 import databaseConfig from './config/database.config';
 import eventBusConfig from './config/event-bus.config';
@@ -24,7 +25,7 @@ import { EventBusModule } from './modules/event-bus/event-bus.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: environmentFile(),
-      load: [accessConfig, databaseConfig, eventBusConfig],
+      load: [accessConfig, databaseConfig, eventBusConfig, emailConfig],
     }),
     DatabaseModule,
     AuditModule,

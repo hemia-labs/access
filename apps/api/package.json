@@ -30,6 +30,7 @@
     "test:seed:docker": "bun run build && bash ../../test/api/integration/seed-access.docker.sh"
   },
   "dependencies": {
+    "@aws-sdk/client-sesv2": "^3.1116.0",
     "@hemia/event-bus": "0.0.3",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
