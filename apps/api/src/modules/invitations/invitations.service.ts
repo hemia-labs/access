@@ -1,11 +1,16 @@
 import {
+  readableOrganizationIds,
+  requireReadableOrganization,
+} from '../../common/auth/readable-organizations';
+import {
   protectInternalOrganization,
   requirePlatformAdministrator,
 } from '../../common/auth/platform-administration';
 import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository, In } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
 import { AccessContextCacheService } from '../access-context/cache/access-context-cache.service';
@@ -20,6 +25,7 @@ import { Role } from '../roles/entities/role.entity';
 import {
   AcceptInvitationDto,
   CreateInvitationDto,
+  ListInvitationsQueryDto,
 } from './dtos/invitation.dto';
 import { InvitationMailService } from './invitation-mail.service';
 import { Invitation } from './entities/invitation.entity';
@@ -42,9 +48,14 @@ export class InvitationsService {
     private readonly outbox: OutboxService,
     private readonly contextCache: AccessContextCacheService,
     @Optional() private readonly mail?: InvitationMailService,
+    @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
 
-  async findAll(organizationId: string) {
+  async findAll(organizationId: string, actor: AccessActor) {
+    requireReadableOrganization(
+      await readableOrganizationIds(this.dataSource, actor, 'membership.read'),
+      organizationId,
+    );
     const invitations = await this.invitations.find({
       where: { organizationId },
       order: { createdAt: 'DESC' },
@@ -52,9 +63,54 @@ export class InvitationsService {
     return invitations.map((item) => this.safe(item));
   }
 
-  async findOne(id: string) {
+  async listAll(
+    { limit = 25, offset = 0, organization_id }: ListInvitationsQueryDto,
+    actor: AccessActor,
+  ) {
+    const ids = await readableOrganizationIds(
+      this.dataSource,
+      actor,
+      'membership.read',
+    );
+    if (organization_id) requireReadableOrganization(ids, organization_id);
+    if (ids?.length === 0) return { items: [], total: 0, limit, offset };
+    const [items, total] = await this.invitations.findAndCount({
+      where: organization_id
+        ? { organizationId: organization_id }
+        : ids === null
+          ? {}
+          : { organizationId: In(ids) },
+      relations: { organization: true },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+    const now = Date.now();
+    return {
+      items: items.map((item) => {
+        const { organization, ...invitation } = item;
+        return {
+          ...this.safe(invitation as Invitation),
+          organizationName: organization?.name ?? null,
+          status:
+            item.status === 'pending' && item.expiresAt.getTime() <= now
+              ? 'expired'
+              : item.status,
+        };
+      }),
+      total,
+      limit,
+      offset,
+    };
+  }
+
+  async findOne(id: string, actor: AccessActor) {
     const invitation = await this.invitations.findOneBy({ id });
     if (!invitation) throw this.notFound('Invitation not found');
+    requireReadableOrganization(
+      await readableOrganizationIds(this.dataSource, actor, 'membership.read'),
+      invitation.organizationId,
+    );
     return this.safe(invitation);
   }
 
@@ -255,7 +311,11 @@ export class InvitationsService {
         },
       });
       return {
-        response: { accepted: true, membership_id: membership.id },
+        response: {
+          accepted: true,
+          membership_id: membership.id,
+          redirect_url: this.invitationDestination(),
+        },
         email: identity.emailSnapshot,
         context: {
           organizationName: organization.name,
@@ -454,6 +514,30 @@ export class InvitationsService {
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
+  }
+
+  private invitationDestination() {
+    const production = this.config.get<string>('NODE_ENV') === 'production';
+    const consoleUrl =
+      this.config.get<string>('EMAIL_CONSOLE_URL') ||
+      (production ? 'https://console.hemia.cloud' : 'http://localhost:3001');
+    try {
+      const url = new URL(consoleUrl);
+      const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      if (
+        !url.username &&
+        !url.password &&
+        (url.protocol === 'https:' ||
+          (!production && local && url.protocol === 'http:'))
+      ) {
+        return url.toString();
+      }
+    } catch {
+      /* Use the environment default when the configured console URL is invalid. */
+    }
+    return production
+      ? 'https://console.hemia.cloud/'
+      : 'http://localhost:3001/';
   }
 
   private hash(token: string) {

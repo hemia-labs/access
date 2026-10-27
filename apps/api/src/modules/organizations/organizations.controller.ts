@@ -34,25 +34,33 @@ export class OrganizationsController {
   }
 
   @Get()
-  @AccessPermission('organization.read', { global: true })
   findAll(
+    @Req() request: AccessRequest,
     @Query('status') status?: string,
     @Query('type') type?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.organizations.findAll({
-      status: status as OrganizationStatus | undefined,
-      type: type as OrganizationType | undefined,
-      search,
-      limit,
-    });
+    return this.organizations.findAll(
+      {
+        status: status as OrganizationStatus | undefined,
+        type: type as OrganizationType | undefined,
+        search,
+        limit,
+      },
+      request.accessActor!,
+    );
   }
 
   @Get(':organizationId')
-  @AccessPermission('organization.read')
-  findOne(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
-    return this.organizations.findOne(organizationId);
+  findOne(
+    @Req() request: AccessRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+  ) {
+    return this.organizations.findOneVisible(
+      organizationId,
+      request.accessActor!,
+    );
   }
 
   @Patch(':organizationId')

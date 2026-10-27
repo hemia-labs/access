@@ -1,4 +1,8 @@
 import {
+  authenticatedActions,
+  requireOrganizationAccess,
+} from './authorization-mode';
+import {
   CanActivate,
   ExecutionContext,
   HttpStatus,
@@ -229,6 +233,14 @@ export class AccessAuthGuard implements CanActivate {
     if (!requirement) return;
 
     const actor = request.accessActor!;
+    if (authenticatedActions(actor)) {
+      const value = request.params.organizationId;
+      const organizationId = Array.isArray(value) ? value[0] : value;
+      if (organizationId)
+        await requireOrganizationAccess(this.dataSource, actor, organizationId);
+      return;
+    }
+
     if (actor.identityType === 'service_account') {
       if (this.matches(actor.scopes ?? [], requirement.permission)) return;
     } else {

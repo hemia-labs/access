@@ -1,3 +1,7 @@
+import {
+  authenticatedActions,
+  requireOrganizationAccess,
+} from './authorization-mode';
 import { HttpStatus } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { AccessActor } from './access-actor.type';
@@ -10,6 +14,22 @@ export async function requirePlatformAdministrator(
   actor: Pick<AccessActor, 'identityReferenceId' | 'identityType'>,
 ) {
   if (actor.identityType === 'service_account') throw forbidden();
+  if (authenticatedActions(actor)) {
+    const eligible = await manager.query<Array<{ id: string }>>(
+      `
+      SELECT m.id FROM organization_memberships m
+      JOIN organizations o ON o.id=m.organization_id
+      JOIN identity_references i ON i.id=m.identity_reference_id
+      WHERE i.id=$1 AND i.status='active' AND i.identity_type<>'service_account'
+        AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
+        AND o.type='internal' AND o.status='active'
+      FOR SHARE OF m,o,i`,
+      [actor.identityReferenceId],
+    );
+    if (!eligible.length) throw forbidden();
+    return;
+  }
+
   const rows: unknown[] = await manager.query(
     `SELECT m.id
     FROM organization_memberships m
@@ -36,6 +56,8 @@ export async function protectInternalOrganization(
   actor: Pick<AccessActor, 'identityReferenceId' | 'identityType'>,
   organizationId: string,
 ) {
+  if (authenticatedActions(actor))
+    await requireOrganizationAccess(manager, actor, organizationId);
   const organization = await manager.getRepository(Organization).findOne({
     where: { id: organizationId },
     lock: { mode: 'pessimistic_write' },

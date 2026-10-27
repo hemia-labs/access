@@ -1,3 +1,4 @@
+import { authorizationMode } from '../common/auth/authorization-mode';
 import { registerAs } from '@nestjs/config';
 
 export type TrustedIssuer = {
@@ -22,6 +23,7 @@ export default registerAs('access', () => {
   const port = Number(process.env.PORT ?? 3019);
 
   return {
+    authorizationMode: authorizationMode(),
     bindHost: process.env.ACCESS_BIND_HOST || undefined,
     legalServiceClientId: process.env.LEGAL_SERVICE_CLIENT_ID ?? '',
     port,

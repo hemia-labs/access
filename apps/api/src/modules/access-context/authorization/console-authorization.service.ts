@@ -1,3 +1,4 @@
+import { authenticatedActions } from '../../../common/auth/authorization-mode';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
@@ -33,6 +34,66 @@ export class ConsoleAuthorizationService {
         HttpStatus.BAD_REQUEST,
       );
     if (actor.identityType === 'service_account') throw this.forbidden();
+
+    if (authenticatedActions(actor)) {
+      const [membership] = await this.database.query<
+        Array<{
+          membership_id: string;
+          context_version: number;
+          expires_at: Date | null;
+        }>
+      >(
+        `
+        SELECT m.id AS membership_id,m.context_version,LEAST(m.expires_at,op.expires_at) AS expires_at
+        FROM organization_memberships m JOIN identity_references i ON i.id=m.identity_reference_id
+        JOIN organizations o ON o.id=m.organization_id JOIN organization_products op ON op.organization_id=o.id
+        JOIN products p ON p.id=op.product_id
+        WHERE o.id=$1 AND i.id=$2 AND i.issuer=$3 AND i.subject_id=$4 AND i.status='active'
+          AND o.type='internal' AND o.status='active' AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
+          AND p.code='console' AND p.status='active' AND op.status='enabled' AND (op.expires_at IS NULL OR op.expires_at>now())
+      `,
+        [
+          organizationId,
+          actor.identityReferenceId,
+          actor.issuer,
+          actor.subjectId,
+        ],
+      );
+      if (!membership) throw this.forbidden();
+      const now = Math.floor(Date.now() / 1000);
+      const expiresAt =
+        membership.expires_at === null
+          ? now + 300
+          : Math.min(
+              now + 300,
+              Math.floor(+new Date(membership.expires_at) / 1000),
+            );
+      if (expiresAt <= now) throw this.forbidden();
+      return {
+        authorized: true,
+        context_token: await this.jwks.signContextToken(
+          {
+            identity_issuer: actor.issuer,
+            identity_reference_id: actor.identityReferenceId,
+            organization_id: organizationId,
+            organization_status: 'active',
+            membership_id: membership.membership_id,
+            membership_status: 'active',
+            product_code: 'console',
+            product_status: 'enabled',
+            contract_version: 1,
+            context_version: Number(membership.context_version),
+            global_roles: [],
+            permissions: [],
+            jti: randomUUID(),
+            nbf: now,
+          },
+          actor.subjectId,
+          audience,
+          { issuedAt: now, expiresAt, type: 'hemia-context+jwt' },
+        ),
+      };
+    }
 
     // One fresh database snapshot; neither login context nor cached grants apply.
     const rows: AuthorityRow[] = await this.database.query(

@@ -1,3 +1,4 @@
+import { authenticatedActions } from '../../../common/auth/authorization-mode';
 import {
   BILLING_MAX_ASSIGNMENTS,
   BILLING_MAX_TARGET_REFERENCES,
@@ -42,7 +43,9 @@ export class SystemAuthorizationService {
     actor: AccessActor,
     productCode: 'billing' | 'legal' = 'billing',
   ) {
-    const rows = await this.rows(actor, undefined, productCode);
+    const rows = authenticatedActions(actor)
+      ? await this.membershipAuthorities(actor, undefined, productCode)
+      : await this.rows(actor, undefined, productCode);
     return [
       ...new Map(
         rows.map((row) => [
@@ -83,6 +86,8 @@ export class SystemAuthorizationService {
         'Invalid system audience',
         400,
       );
+    if (authenticatedActions(actor))
+      return this.resolveAuthenticated(actor, organizationId, productCode);
     const rows = await this.rows(actor, organizationId, productCode);
     if (!rows.length)
       throw new AccessError(
@@ -156,6 +161,101 @@ export class SystemAuthorizationService {
         actor.subjectId,
         `${productCode}-api`,
         { expiresAt: exp, issuedAt: now, type: 'hemia-context+jwt' },
+      ),
+    };
+  }
+
+  private async membershipAuthorities(
+    actor: AccessActor,
+    organizationId: string | undefined,
+    productCode: 'billing' | 'legal',
+  ) {
+    if (actor.identityType === 'service_account')
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Human membership required',
+        403,
+      );
+    return this.database.query<
+      Array<{
+        organization_id: string;
+        organization_code: string;
+        organization_name: string;
+        membership_id: string;
+        context_version: number;
+        authority_expires_at: Date | null;
+        external_tenant_id: string | null;
+        provisioning_status: string | null;
+      }>
+    >(
+      `
+      SELECT o.id AS organization_id, o.code AS organization_code, o.name AS organization_name,
+        m.id AS membership_id, m.context_version, LEAST(m.expires_at, op.expires_at) AS authority_expires_at,
+        (SELECT external_tenant_id FROM organization_product_instances WHERE organization_product_id=op.id LIMIT 1) AS external_tenant_id,
+        (SELECT status FROM organization_product_instances WHERE organization_product_id=op.id LIMIT 1) AS provisioning_status
+      FROM organization_memberships m JOIN identity_references i ON i.id=m.identity_reference_id
+      JOIN organizations o ON o.id=m.organization_id
+      JOIN organization_products op ON op.organization_id=o.id JOIN products p ON p.id=op.product_id
+      WHERE i.id=$1 AND i.issuer=$2 AND i.subject_id=$3 AND i.status='active' AND i.identity_type<>'service_account'
+        AND ($4::uuid IS NULL OR o.id=$4) AND o.type='internal' AND o.status='active'
+        AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
+        AND p.code=$5 AND p.status='active' AND op.status='enabled' AND (op.expires_at IS NULL OR op.expires_at>now())
+      ORDER BY o.id`,
+      [
+        actor.identityReferenceId,
+        actor.issuer,
+        actor.subjectId,
+        organizationId ?? null,
+        productCode,
+      ],
+    );
+  }
+
+  private async resolveAuthenticated(
+    actor: AccessActor,
+    organizationId: string,
+    productCode: 'billing' | 'legal',
+  ) {
+    const [membership] = await this.membershipAuthorities(
+      actor,
+      organizationId,
+      productCode,
+    );
+    if (!membership)
+      throw new AccessError(
+        'ACCESS_FORBIDDEN',
+        'Active membership and enabled product required',
+        403,
+      );
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt =
+      membership.authority_expires_at === null
+        ? now + 300
+        : Math.min(
+            now + 300,
+            Math.floor(+new Date(membership.authority_expires_at) / 1000),
+          );
+    if (expiresAt <= now)
+      throw new AccessError('ACCESS_FORBIDDEN', 'Authorization expired', 403);
+    return {
+      authorized: true,
+      context_token: await this.jwks.signContextToken(
+        {
+          identity_issuer: actor.issuer,
+          identity_reference_id: actor.identityReferenceId,
+          organization_id: organizationId,
+          membership_id: membership.membership_id,
+          product_code: productCode,
+          contract_version: 1,
+          catalog_version: productCode === 'legal' ? 2 : 1,
+          context_version: Number(membership.context_version),
+          jti: randomUUID(),
+          nbf: now,
+          assignments: [],
+        },
+        actor.subjectId,
+        `${productCode}-api`,
+        { expiresAt, issuedAt: now, type: 'hemia-context+jwt' },
       ),
     };
   }
