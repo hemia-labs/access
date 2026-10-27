@@ -35,6 +35,33 @@ try:
         args.append('--acknowledge-schema')
     if os.environ.get('BACKUP_CONFIRMATION') == 'I_HAVE_A_BACKUP':
         args.append('--backup-confirmed')
+    # Apply the non-secret authorization setting through the dedicated deploy user.
+    # An unset CI variable preserves the existing host configuration.
+    mode = os.environ.get('HEMIA_AUTHORIZATION_MODE', '')
+    if mode:
+        if mode not in ('roles', 'authenticated'):
+            raise ValueError('Invalid HEMIA_AUTHORIZATION_MODE')
+        configure_mode = r"""import os,re,shutil,sys,tempfile
+from pathlib import Path
+from datetime import datetime,timezone
+p=Path(sys.argv[1])/'shared/production.env'
+if not p.is_file() or p.stat().st_mode & 0o077:
+    raise ValueError('Expected private production.env')
+old=p.read_text()
+new=re.sub(r'^HEMIA_AUTHORIZATION_MODE=.*\n?', '', old, flags=re.M).rstrip()+'\nHEMIA_AUTHORIZATION_MODE='+sys.argv[2]+'\n'
+if old != new:
+    backup=p.with_name('production.env.before-authmode-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
+    shutil.copy2(p,backup)
+    fd,tmp=tempfile.mkstemp(prefix='.production.env.',dir=p.parent)
+    try:
+        os.fchmod(fd,p.stat().st_mode & 0o777)
+        with os.fdopen(fd,'w') as f: f.write(new)
+        os.replace(tmp,p)
+    finally:
+        if os.path.exists(tmp): os.unlink(tmp)
+print('HEMIA_AUTHORIZATION_MODE='+sys.argv[2])
+"""
+        subprocess.run(ssh + [shlex.join(['python3', '-c', configure_mode, root, mode])], check=True)
     subprocess.run(ssh + [shlex.join(args)], check=True)
 finally:
     subprocess.run(ssh + [shlex.join(['rm', '-rf', '--', remote])], check=False)

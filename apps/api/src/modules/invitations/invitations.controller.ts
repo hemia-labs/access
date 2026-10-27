@@ -6,14 +6,15 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-import { AccessPermission } from '../../common/auth/access-permission.decorator';
 import { AccessAuthGuard } from '../../common/auth/access-auth.guard';
 import type { AccessRequest } from '../../common/auth/access-actor.type';
 import {
   AcceptInvitationDto,
   CreateInvitationDto,
+  ListInvitationsQueryDto,
 } from './dtos/invitation.dto';
 import { InvitationsService } from './invitations.service';
 
@@ -32,15 +33,27 @@ export class InvitationsController {
   }
 
   @Get('v1/organizations/:organizationId/invitations')
-  @AccessPermission('membership.read', { global: true })
-  findAll(@Param('organizationId', ParseUUIDPipe) organizationId: string) {
-    return this.invitations.findAll(organizationId);
+  findAll(
+    @Req() request: AccessRequest,
+    @Param('organizationId', ParseUUIDPipe) organizationId: string,
+  ) {
+    return this.invitations.findAll(organizationId, request.accessActor!);
+  }
+
+  @Get('v1/invitations')
+  listAll(
+    @Req() request: AccessRequest,
+    @Query() query: ListInvitationsQueryDto,
+  ) {
+    return this.invitations.listAll(query, request.accessActor!);
   }
 
   @Get('v1/invitations/:invitationId')
-  @AccessPermission('membership.read', { global: true })
-  findOne(@Param('invitationId', ParseUUIDPipe) invitationId: string) {
-    return this.invitations.findOne(invitationId);
+  findOne(
+    @Req() request: AccessRequest,
+    @Param('invitationId', ParseUUIDPipe) invitationId: string,
+  ) {
+    return this.invitations.findOne(invitationId, request.accessActor!);
   }
 
   @Post('v1/invitations/accept')

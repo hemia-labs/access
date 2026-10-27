@@ -1,5 +1,7 @@
+import { Type } from 'class-transformer';
 import {
   IsEmail,
+  IsUUID,
   IsInt,
   IsOptional,
   IsString,
@@ -50,4 +52,23 @@ export class AcceptInvitationProofDto extends AcceptInvitationDto {
   @IsString()
   @MaxLength(8192)
   identity_proof: string;
+}
+
+export class ListInvitationsQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number = 25;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset: number = 0;
+
+  @IsOptional()
+  @IsUUID()
+  organization_id?: string;
 }

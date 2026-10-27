@@ -1,4 +1,8 @@
 import {
+  readableOrganizationIds,
+  requireReadableOrganization,
+} from '../../common/auth/readable-organizations';
+import {
   protectInternalOrganization,
   requirePlatformAdministrator,
 } from '../../common/auth/platform-administration';
@@ -7,7 +11,7 @@ import { AccessContextCacheService } from '../access-context/cache/access-contex
 import { SetOrganizationTypeDto } from './dtos/set-organization-type.dto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, ILike, Repository } from 'typeorm';
+import { DataSource, EntityManager, ILike, Repository, In } from 'typeorm';
 import { AccessActor } from '../../common/auth/access-actor.type';
 import { AccessError } from '../../common/errors/access-error';
 import { AuditService } from '../audit/audit.service';
@@ -93,9 +97,17 @@ export class OrganizationsService {
     }
   }
 
-  findAll(input: FindAllInput) {
+  async findAll(input: FindAllInput, actor: AccessActor) {
+    const ids = await readableOrganizationIds(
+      this.dataSource,
+      actor,
+      'organization.read',
+    );
+    if (ids?.length === 0) return [];
+
     const take = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
     const where = {
+      ...(ids === null ? {} : { id: In(ids) }),
       ...(input.status ? { status: input.status } : {}),
       ...(input.type ? { type: input.type } : {}),
       ...(input.search ? { name: ILike(`%${input.search}%`) } : {}),
@@ -106,6 +118,18 @@ export class OrganizationsService {
       order: { createdAt: 'DESC' },
       take,
     });
+  }
+
+  async findOneVisible(id: string, actor: AccessActor) {
+    requireReadableOrganization(
+      await readableOrganizationIds(
+        this.dataSource,
+        actor,
+        'organization.read',
+      ),
+      id,
+    );
+    return this.findOne(id);
   }
 
   async findOne(id: string) {

@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { InvitationsService } from '../../../../apps/api/src/modules/invitations/invitations.service';
 import { Invitation } from '../../../../apps/api/src/modules/invitations/entities/invitation.entity';
@@ -12,7 +13,7 @@ const actor = {
   subjectId: 'user',
   identityType: 'workforce_user' as const,
 };
-function fixture(email: string | null = 'invitee@example.test') {
+function fixture(email: string | null = 'invitee@example.test', settings: Record<string, string> = {}) {
   const invitation = {
     id: 'invite',
     organizationId: 'org',
@@ -81,6 +82,7 @@ function fixture(email: string | null = 'invitee@example.test') {
     { record: jest.fn() } as never,
     cache as never,
     mail as never,
+    new ConfigService(settings),
   );
   return {
     service,
@@ -93,6 +95,19 @@ function fixture(email: string | null = 'invitee@example.test') {
   };
 }
 describe('Invitation acceptance', () => {
+  it.each([
+    [{ INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174' }, 'http://localhost:3001/'],
+    [{ NODE_ENV: 'production', INVITATION_PRODUCT_URL_HOMEATLAS: 'https://homeatlas.example.test' }, 'https://console.hemia.cloud/'],
+    [{ NODE_ENV: 'production' }, 'https://console.hemia.cloud/'],
+    [{ EMAIL_CONSOLE_URL: 'http://localhost:4000' }, 'http://localhost:4000/'],
+    [{ EMAIL_CONSOLE_URL: 'javascript:alert(1)' }, 'http://localhost:3001/'],
+    [{ NODE_ENV: 'production', INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174' }, 'https://console.hemia.cloud/'],
+    [{ EMAIL_CONSOLE_URL: 'https://user:password@example.test' }, 'http://localhost:3001/'],
+  ] as [Record<string, string>, string][])('resolves a safe destination for %p', async (settings, expected) => {
+    const f = fixture('invitee@example.test', settings);
+    Object.assign(f.invitation, { productCode: 'homeatlas' });
+    await expect(f.service.accept(actor, { token })).resolves.toMatchObject({ redirect_url: expected });
+  });
   it.each([null, 'other@example.test'])(
     'rejects missing or mismatched email %s before granting membership',
     async (email) => {
@@ -110,6 +125,7 @@ describe('Invitation acceptance', () => {
     await expect(f.service.accept(actor, { token })).resolves.toEqual({
       accepted: true,
       membership_id: 'membership',
+      redirect_url: 'http://localhost:3001/',
     });
     expect(f.invitations.findOne).toHaveBeenCalledWith(
       expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
@@ -132,6 +148,7 @@ describe('Invitation acceptance', () => {
     await expect(f.service.accept(actor, { token })).resolves.toEqual({
       accepted: true,
       membership_id: 'membership',
+      redirect_url: 'http://localhost:3001/',
     });
     expect(f.invitation.status).toBe('accepted');
   });
