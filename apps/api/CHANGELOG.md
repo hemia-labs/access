@@ -1,5 +1,11 @@
 # api
 
+## 1.2.0
+
+### Minor Changes
+
+- 2ae1a99: Personaliza los correos de invitación y envía la bienvenida después de aceptar la invitación usando las plantillas SES de Hemia.
+
 ## 1.1.0
 
 ### Minor Changes
