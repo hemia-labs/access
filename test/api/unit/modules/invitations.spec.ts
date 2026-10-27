@@ -13,7 +13,10 @@ const actor = {
   subjectId: 'user',
   identityType: 'workforce_user' as const,
 };
-function fixture(email: string | null = 'invitee@example.test', settings: Record<string, string> = {}) {
+function fixture(
+  email: string | null = 'invitee@example.test',
+  settings: Record<string, string> = {},
+) {
   const invitation = {
     id: 'invite',
     organizationId: 'org',
@@ -96,18 +99,41 @@ function fixture(email: string | null = 'invitee@example.test', settings: Record
 }
 describe('Invitation acceptance', () => {
   it.each([
-    [{ INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174' }, 'http://localhost:3001/'],
-    [{ NODE_ENV: 'production', INVITATION_PRODUCT_URL_HOMEATLAS: 'https://homeatlas.example.test' }, 'https://console.hemia.cloud/'],
+    [
+      { INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174' },
+      'http://localhost:3001/',
+    ],
+    [
+      {
+        NODE_ENV: 'production',
+        INVITATION_PRODUCT_URL_HOMEATLAS: 'https://homeatlas.example.test',
+      },
+      'https://console.hemia.cloud/',
+    ],
     [{ NODE_ENV: 'production' }, 'https://console.hemia.cloud/'],
     [{ EMAIL_CONSOLE_URL: 'http://localhost:4000' }, 'http://localhost:4000/'],
     [{ EMAIL_CONSOLE_URL: 'javascript:alert(1)' }, 'http://localhost:3001/'],
-    [{ NODE_ENV: 'production', INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174' }, 'https://console.hemia.cloud/'],
-    [{ EMAIL_CONSOLE_URL: 'https://user:password@example.test' }, 'http://localhost:3001/'],
-  ] as [Record<string, string>, string][])('resolves a safe destination for %p', async (settings, expected) => {
-    const f = fixture('invitee@example.test', settings);
-    Object.assign(f.invitation, { productCode: 'homeatlas' });
-    await expect(f.service.accept(actor, { token })).resolves.toMatchObject({ redirect_url: expected });
-  });
+    [
+      {
+        NODE_ENV: 'production',
+        INVITATION_PRODUCT_URL_HOMEATLAS: 'http://localhost:5174',
+      },
+      'https://console.hemia.cloud/',
+    ],
+    [
+      { EMAIL_CONSOLE_URL: 'https://user:password@example.test' },
+      'http://localhost:3001/',
+    ],
+  ] as [Record<string, string>, string][])(
+    'resolves a safe destination for %p',
+    async (settings, expected) => {
+      const f = fixture('invitee@example.test', settings);
+      Object.assign(f.invitation, { productCode: 'homeatlas' });
+      await expect(f.service.accept(actor, { token })).resolves.toMatchObject({
+        redirect_url: expected,
+      });
+    },
+  );
   it.each([null, 'other@example.test'])(
     'rejects missing or mismatched email %s before granting membership',
     async (email) => {
