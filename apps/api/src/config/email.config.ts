@@ -11,12 +11,16 @@ export default registerAs('email', () => {
       process.env.EMAIL_APP_URL ||
       'http://localhost:5173',
     supportEmail: process.env.EMAIL_SUPPORT_EMAIL || 'support@hemia.dev',
+    consoleUrl: process.env.EMAIL_CONSOLE_URL || 'https://console.hemia.cloud',
     ses: {
       fromName: process.env.EMAIL_FROM_NAME || 'Hemia',
       fromAuth: process.env.EMAIL_FROM_AUTH || `auth@${project}.hemia.dev`,
       replyTo: process.env.EMAIL_REPLY_TO || 'support@hemia.dev',
       configurationSetAuth:
         process.env.EMAIL_CONFIGURATION_SET_AUTH || `hemia-${environment}-auth`,
+      welcomeTemplate:
+        process.env.EMAIL_WELCOME_TEMPLATE ||
+        `${project}-${environment}-welcome`,
       invitationTemplate:
         process.env.EMAIL_INVITATION_TEMPLATE ||
         `${project}-${environment}-invitation`,
