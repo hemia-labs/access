@@ -1,5 +1,11 @@
 # api
 
+## 1.3.0
+
+### Minor Changes
+
+- 65c51b9: Add a reversible authenticated action mode that skips human role checks while retaining membership, product eligibility, authentication and service policies. Include scoped invitation listing for Console.
+
 ## 1.2.0
 
 ### Minor Changes
