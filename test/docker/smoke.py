@@ -95,8 +95,17 @@ with tempfile.TemporaryDirectory(prefix='access-docker-') as directory:
         check_http('/.well-known/jwks.json', "r.status===200 && body.keys.length===1 && !body.keys[0].d", web=True)
         check_http('/v1/me', 'r.status===401', web=True)
         check_http('/', "r.status===200 && text.includes('Hemia Access')", web=True)
-        run('exec', '-T', 'api', 'node', '-e', "if(process.getuid()===0)process.exit(1)", capture=True)
-        run('exec', '-T', 'web', 'node', '-e', "if(process.getuid()===0)process.exit(1)", capture=True)
+        runtime_probe = (
+            "const fs=require('node:fs'),assert=require('node:assert/strict');"
+            "assert.notEqual(process.getuid(),0);"
+            "assert.match(fs.readFileSync('/etc/os-release','utf8'),/^ID=debian$/m);"
+            "assert(fs.statSync('/etc/ssl/certs/ca-certificates.crt').size>0);"
+            "for(const path of ['/usr/local/bin/npm','/usr/local/bin/yarn','/usr/local/include/node'])"
+            "assert(!fs.existsSync(path),'Unexpected development tool: '+path);"
+        )
+        for service in ['api', 'web']:
+            run('exec', '-T', service, 'node', '-e', runtime_probe, capture=True)
+        print('PASS: minimal Debian/Node runtimes, CA certificates and non-root execution', flush=True)
         jwks_probe = "fetch('http://web:3000/.well-known/jwks.json').then(async r=>console.log(JSON.stringify(await r.json())))"
         before = json.loads(run('exec', '-T', 'api', 'node', '-e', jwks_probe, capture=True))
         print('PASS: production Redis/RabbitMQ, manual migrations/seeds, Next.js, API proxy, public JWKS and authorization', flush=True)

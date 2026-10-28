@@ -11,7 +11,11 @@ export default registerAs('email', () => {
       process.env.EMAIL_APP_URL ||
       'http://localhost:5173',
     supportEmail: process.env.EMAIL_SUPPORT_EMAIL || 'support@hemia.dev',
-    consoleUrl: process.env.EMAIL_CONSOLE_URL || 'https://console.hemia.cloud',
+    consoleUrl:
+      process.env.EMAIL_CONSOLE_URL ||
+      (process.env.NODE_ENV === 'production'
+        ? 'https://console.hemia.cloud'
+        : 'http://localhost:3001'),
     ses: {
       fromName: process.env.EMAIL_FROM_NAME || 'Hemia',
       fromAuth: process.env.EMAIL_FROM_AUTH || `auth@${project}.hemia.dev`,
