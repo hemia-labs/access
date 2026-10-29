@@ -56,6 +56,7 @@ export class PublicInvitationsController {
       {
         email: invitation.emailNormalized,
         token_hash: invitation.tokenHash,
+        invitation_issued_at: invitation.updatedAt.toISOString(),
       },
       invitation.id,
       'hemia-id-invitation',

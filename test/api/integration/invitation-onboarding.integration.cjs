@@ -30,7 +30,7 @@ async function run() {
   let id = 0;
   const org = { id: 'org', type: 'customer', name: 'Test organization', status: 'active' };
   const repository = {
-    create: value => ({ id: `invitation-${++id}`, status: 'pending', ...value }),
+    create: value => ({ id: `invitation-${++id}`, status: 'pending', updatedAt: new Date(), ...value }),
     save: async value => { invitations.set(value.id, value); return value; },
     findOneBy: async where => [...invitations.values()].find(i => Object.entries(where).every(([key, value]) => i[key] === value)) ?? null,
     findOne: async ({ where, relations }) => { const found = await repository.findOneBy(where); return found ? Object.assign(found, relations ? { organization: org } : {}) : null; },
@@ -42,7 +42,7 @@ async function run() {
     findOrCreateFromClaims: async input => { const reference = { id: input.subjectId, issuer: input.issuer, subjectId: input.subjectId, identityType: input.identityType, emailSnapshot: input.email, status: 'active' }; references.set(reference.id, reference); return reference; },
   };
   const cache = { key: id => id, del: async () => {} };
-  const service = new InvitationsService({ transaction: fn => fn(manager) }, repository, identities, { record: async () => {} }, { record: async () => {} }, cache, { send: async (email, token) => { emails.push({ email, token }); } });
+  const service = new InvitationsService({ transaction: fn => fn(manager), getRepository: entity => entity === Organization ? { findOneByOrFail: async () => org } : { findOneBy: async () => null } }, repository, identities, { record: async () => {} }, { record: async () => {} }, cache, { send: async (email, token) => { emails.push({ email, token }); } });
   let publicController; let accessKeys;
   const http = createServer(async (req, res) => {
     try {
