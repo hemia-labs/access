@@ -62,6 +62,51 @@ if old != new:
 print('HEMIA_AUTHORIZATION_MODE='+sys.argv[2])
 """
         subprocess.run(ssh + [shlex.join(['python3', '-c', configure_mode, root, mode])], check=True)
+    # The broker moves independently of the application and its credentials.
+    amqp_host = os.environ.get('AMQP_HOST', '')
+    if amqp_host:
+        configure_amqp = r"""import ipaddress,os,re,shutil,sys,tempfile
+from pathlib import Path
+from datetime import datetime,timezone
+from urllib.parse import urlsplit
+host=str(ipaddress.IPv4Address(sys.argv[2]))
+p=Path(sys.argv[1])/'shared/production.env'
+if not p.is_file() or p.stat().st_mode & 0o077:
+    raise ValueError('Expected private production.env')
+old=p.read_text()
+pattern=re.compile(r'^(\s*(?:export\s+)?AMQP_URL\s*=\s*)([^\r\n]*)(\r?\n|$)',re.M)
+matches=list(pattern.finditer(old))
+if len(matches)!=1:
+    raise ValueError('Expected exactly one AMQP_URL in production.env')
+m=matches[0];raw=m[2];value=raw.strip();quote=''
+if len(value)>=2 and value[0]==value[-1] and value[0] in "\"'":
+    quote=value[0];value=value[1:-1]
+try:
+    parts=urlsplit(value);port=parts.port;hostname=parts.hostname
+except ValueError:
+    raise ValueError('Expected a valid AMQP_URL') from None
+if parts.scheme not in ('amqp','amqps') or not hostname or re.search(r'\s',value):
+    raise ValueError('Expected a valid AMQP_URL')
+userinfo,separator,address=parts.netloc.rpartition('@')
+if not separator: address=parts.netloc
+suffix=address[address.index(']')+1:] if address.startswith('[') else address[len(hostname):]
+authority=(userinfo+'@' if separator else '')+host+suffix
+start=value.index('://')+3
+updated=value[:start]+authority+value[start+len(parts.netloc):]
+new=old[:m.start(2)]+quote+updated+quote+old[m.end(2):]
+if new!=old:
+    backup=p.with_name('production.env.before-amqp-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
+    shutil.copy2(p,backup)
+    fd,tmp=tempfile.mkstemp(prefix='.production.env.',dir=p.parent)
+    try:
+        os.fchmod(fd,p.stat().st_mode & 0o777)
+        with os.fdopen(fd,'w') as f:f.write(new)
+        os.replace(tmp,p)
+    finally:
+        if os.path.exists(tmp):os.unlink(tmp)
+print('AMQP hostname configured; credentials and port preserved')
+"""
+        subprocess.run(ssh + [shlex.join(['python3', '-c', configure_amqp, root, amqp_host])], check=True)
     subprocess.run(ssh + [shlex.join(args)], check=True)
 finally:
     subprocess.run(ssh + [shlex.join(['rm', '-rf', '--', remote])], check=False)

@@ -85,6 +85,7 @@ jobs:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
       HEMIA_AUTHORIZATION_MODE: ${{ vars.HEMIA_AUTHORIZATION_MODE }}
+      AMQP_HOST: ${{ vars.AMQP_HOST }}
     steps:
       - name: Set temporary credential paths
         run: |
