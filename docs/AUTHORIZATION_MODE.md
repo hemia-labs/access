@@ -18,3 +18,49 @@ acción administrativa permitida en este modo.
 Para restaurar controles: cambiar el valor a `roles` en los cuatro entornos y
 recrear backends. No se revocan ni deshacen las acciones realizadas mientras el
 modo temporal estuvo activo. Conservar el valor `roles` en ejemplos y defaults.
+
+## Activación aislada de Billing
+
+En Access, `HEMIA_BILLING_AUTHORIZATION_MODE=roles` cambia únicamente el
+descubrimiento de organizaciones y los contextos firmados de Billing. Si está
+ausente o vacío, hereda `HEMIA_AUTHORIZATION_MODE`. No cambia la autorización de
+Legal, Console, la administración de Access ni las cuentas de servicio. Los dos
+valores válidos son `roles` y `authenticated`; cualquier otro impide iniciar
+Access. El consumidor Billing debe activar también su modo `roles` y aceptar
+catálogos 1 y 2 antes de habilitar el override en Access.
+
+No cambiar el modo global para habilitar solo Billing. Una sesión o contexto ya
+emitido puede conservarse hasta su vencimiento; comprobar el resultado con una
+nueva resolución de contexto y una sesión renovada del consumidor.
+
+## Catálogo Billing v2 y consulta de webhooks
+
+El catálogo v1 permanece inmutable. V2 conserva sus seis roles y añade
+`billing.webhook_viewer` (Consulta de webhooks), cuyo único alcance es
+`all_customers`. Conserva `contract_version: 1` y el perfil `billing_v1`; no
+requiere migración de esquema ni actualiza asignaciones anteriores. Access
+firma `catalog_version: 1` para asignaciones efectivas v1 y `2` cuando al menos
+una asignación efectiva usa v2. Publicar v2 no eleva la versión de un usuario
+sin asignaciones v2.
+
+Un administrador autorizado puede publicar explícitamente mediante
+`POST /v1/system-roles/catalogs/billing/v2` con `{}`. La publicación es
+idempotente y no asigna roles. `GET /v1/system-roles/catalogs` incluye ambas
+versiones y su estado. Hemia Console muestra la versión más reciente en
+`/es/access/system-role-catalogs` y construye la ruta de publicación con esa
+versión; no necesita un endpoint v2 codificado en su interfaz.
+
+La asignación es una operación distinta: `POST /v1/system-roles/assignments`,
+con `roleId` devuelto al publicar v2, la membresía destinataria, `scopeType:
+"all_customers"`, `organizationIds: []`, fechas e `idempotencyKey` de acuerdo
+con el contrato existente. Usar la autoridad `platform_super_admin` vigente
+para publicación y asignación global; `organization_admin` o
+`organization_owner` por sí solos no conceden esa autoridad en modo `roles`.
+No usar la asignación de roles genéricos de organización como sustituto de una
+asignación de sistema. Console dispone de publicación de catálogos, pero su
+interfaz actual no expone la creación de estas asignaciones de sistema.
+
+Preparar primero consumidores compatibles, publicar v2 y asignar explícitamente
+los operadores que conservarán acceso; después activar el modo Billing aislado
+y comprobar que un usuario sin asignación no puede resolver contexto Billing.
+Las asignaciones v1 siguen funcionando y no necesitan recrearse.

@@ -43,7 +43,7 @@ export class SystemAuthorizationService {
     actor: AccessActor,
     productCode: 'billing' | 'legal' = 'billing',
   ) {
-    const rows = authenticatedActions(actor)
+    const rows = authenticatedActions(actor, productCode)
       ? await this.membershipAuthorities(actor, undefined, productCode)
       : await this.rows(actor, undefined, productCode);
     return [
@@ -86,7 +86,7 @@ export class SystemAuthorizationService {
         'Invalid system audience',
         400,
       );
-    if (authenticatedActions(actor))
+    if (authenticatedActions(actor, productCode))
       return this.resolveAuthenticated(actor, organizationId, productCode);
     const rows = await this.rows(actor, organizationId, productCode);
     if (!rows.length)
@@ -113,10 +113,7 @@ export class SystemAuthorizationService {
       membership_id: rows[0].membership_id,
       product_code: productCode,
       contract_version: 1,
-      catalog_version:
-        productCode === 'legal'
-          ? Math.max(...rows.map((row) => row.catalog_version))
-          : 1,
+      catalog_version: Math.max(...rows.map((row) => row.catalog_version)),
       context_version: rows[0].context_version,
       jti: randomUUID(),
       nbf: now,
@@ -338,10 +335,7 @@ export class SystemAuthorizationService {
     if (
       rows.some(
         (row) =>
-          row.contract_version !== 1 ||
-          !(productCode === 'legal' ? [1, 2] : [1]).includes(
-            row.catalog_version,
-          ),
+          row.contract_version !== 1 || ![1, 2].includes(row.catalog_version),
       )
     )
       throw new AccessError(

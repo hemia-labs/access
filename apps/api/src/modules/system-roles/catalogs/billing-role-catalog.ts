@@ -37,3 +37,16 @@ export const billingRoleCatalog = {
     },
   ],
 } as const;
+
+export const billingRoleCatalogV2 = {
+  ...billingRoleCatalog,
+  catalog_version: 2,
+  roles: [
+    ...billingRoleCatalog.roles,
+    {
+      code: 'billing.webhook_viewer',
+      name: 'Consulta de webhooks',
+      allowed_scopes: ['all_customers'],
+    },
+  ],
+} as const;

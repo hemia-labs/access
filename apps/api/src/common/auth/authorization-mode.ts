@@ -4,19 +4,26 @@ import type { DataSource, EntityManager } from 'typeorm';
 import type { AccessActor } from './access-actor.type';
 import { AccessError } from '../errors/access-error';
 
-export function authorizationMode(): 'roles' | 'authenticated' {
-  const mode = process.env.HEMIA_AUTHORIZATION_MODE || 'roles';
+export function authorizationMode(
+  productCode?: 'billing' | 'legal',
+): 'roles' | 'authenticated' {
+  const variable =
+    productCode === 'billing' && process.env.HEMIA_BILLING_AUTHORIZATION_MODE
+      ? 'HEMIA_BILLING_AUTHORIZATION_MODE'
+      : 'HEMIA_AUTHORIZATION_MODE';
+  const mode = process.env[variable] || 'roles';
   if (mode !== 'roles' && mode !== 'authenticated')
-    throw new Error('Invalid HEMIA_AUTHORIZATION_MODE');
+    throw new Error(`Invalid ${variable}`);
   return mode;
 }
 
 export function authenticatedActions(
   actor: Pick<AccessActor, 'identityType'>,
+  productCode?: 'billing' | 'legal',
 ): boolean {
   return (
     actor.identityType !== 'service_account' &&
-    authorizationMode() === 'authenticated'
+    authorizationMode(productCode) === 'authenticated'
   );
 }
 
