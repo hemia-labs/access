@@ -41,13 +41,15 @@ const [billingCatalog, billingCatalogV2] = [
 ].map((catalog): Catalog => ({
   ...catalog,
   scope_profile: 'billing_v1',
-  roles: catalog.roles.map((role) => ({
-    ...role,
-    allowed_scopes: role.allowed_scopes.map((scope_type: string) => ({
-      scope_type,
-      consumer_scope_type: 'not_applicable',
-    })),
-  })),
+  roles: catalog.roles.map(
+    (role: (typeof billingRoleCatalogV2.roles)[number]) => ({
+      ...role,
+      allowed_scopes: role.allowed_scopes.map((scope_type: string) => ({
+        scope_type,
+        consumer_scope_type: 'not_applicable',
+      })),
+    }),
+  ),
 }));
 const availableCatalogs: Catalog[] = [
   billingCatalog,

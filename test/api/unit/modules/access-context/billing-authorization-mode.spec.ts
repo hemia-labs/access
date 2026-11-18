@@ -4,6 +4,7 @@ import {
 } from '../../../../../apps/api/src/common/auth/authorization-mode';
 import { SystemAuthorizationService } from '../../../../../apps/api/src/modules/access-context/authorization/system-authorization.service';
 import { ConsoleAuthorizationService } from '../../../../../apps/api/src/modules/access-context/authorization/console-authorization.service';
+import type { AccessJwksService } from '../../../../../apps/api/src/modules/access-context/jwks/access-jwks.service';
 
 const actor = {
   identityReferenceId: '11111111-1111-4111-8111-111111111111',
@@ -33,7 +34,9 @@ const row = (version = 1, code = 'billing.viewer') => ({
 });
 const setup = (rows = [row()]) => {
   const query = jest.fn().mockResolvedValue(rows);
-  const signContextToken = jest.fn().mockResolvedValue('signed');
+  const signContextToken = jest
+    .fn<Promise<string>, Parameters<AccessJwksService['signContextToken']>>()
+    .mockResolvedValue('signed');
   return {
     query,
     signContextToken,
@@ -131,15 +134,13 @@ describe('Billing-only authorization mode and catalog compatibility', () => {
       expect.any(Array),
     );
     const signContextToken = jest.fn().mockResolvedValue('signed');
-    const query = jest
-      .fn()
-      .mockResolvedValue([
-        {
-          membership_id: row().membership_id,
-          context_version: 1,
-          expires_at: null,
-        },
-      ]);
+    const query = jest.fn().mockResolvedValue([
+      {
+        membership_id: row().membership_id,
+        context_version: 1,
+        expires_at: null,
+      },
+    ]);
     await new ConsoleAuthorizationService(
       { query } as never,
       { signContextToken } as never,
@@ -175,17 +176,17 @@ describe('Billing-only authorization mode and catalog compatibility', () => {
           catalog_version: Math.max(
             ...rows.map((grant) => grant.catalog_version),
           ),
-          assignments: rows.map((grant) =>
-            expect.objectContaining({
-              assignment_id: grant.assignment_id,
-              role_code: grant.role_code,
-              scope: { type: 'all_customers' },
-            }),
-          ),
         }),
         actor.subjectId,
         'billing-api',
         expect.any(Object),
+      );
+      expect(signContextToken.mock.calls[0]?.[0].assignments).toMatchObject(
+        rows.map((grant) => ({
+          assignment_id: grant.assignment_id,
+          role_code: grant.role_code,
+          scope: { type: 'all_customers' },
+        })),
       );
     },
   );
@@ -206,7 +207,11 @@ describe('Billing-only authorization mode and catalog compatibility', () => {
     const { service, query, signContextToken } = setup();
     process.env.HEMIA_BILLING_AUTHORIZATION_MODE = 'authenticated';
     await service.resolve(actor, organization, 'billing-api', 'billing');
-    expect(signContextToken.mock.calls.at(-1)?.[0].assignments).toEqual([]);
+    expect(signContextToken.mock.calls.at(-1)?.[0]).toMatchObject({
+      contract_version: 1,
+      catalog_version: 1,
+      assignments: [],
+    });
     process.env.HEMIA_BILLING_AUTHORIZATION_MODE = 'roles';
     query.mockResolvedValue([]);
     const count = signContextToken.mock.calls.length;
