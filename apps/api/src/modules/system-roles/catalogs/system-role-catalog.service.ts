@@ -1,4 +1,5 @@
 import { legalRoleCatalog, legalRoleCatalogV2 } from './legal-role-catalog';
+import { rolePermissions } from './system-role-permissions';
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { AccessActor } from '../../../common/auth/access-actor.type';
@@ -119,6 +120,7 @@ export class SystemRoleCatalogService {
           id?: string;
           code: string;
           name: string;
+          permissions: readonly string[];
           allowedScopes: Array<{ resource: string; consumer: string }>;
         }>;
       }> = [];
@@ -149,6 +151,7 @@ export class SystemRoleCatalogService {
               : {}),
             code: role.code,
             name: role.name,
+            permissions: rolePermissions[role.code] ?? [],
             allowedScopes: role.allowed_scopes.map((scope) => ({
               resource: scope.scope_type,
               consumer: scope.consumer_scope_type,

@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -44,6 +45,14 @@ export class SystemRoleHistoryController {
   @Post('assignments')
   createAssignment(@Req() req: AccessRequest, @Body() body: unknown) {
     return this.history.createAssignment(req.accessActor!, body);
+  }
+  @Get('assignments')
+  @Header('Cache-Control', 'no-store')
+  listAssignments(
+    @Req() req: AccessRequest,
+    @Query('membershipId', ParseUUIDPipe) membershipId: string,
+  ) {
+    return this.history.listAssignments(req.accessActor!, membershipId);
   }
   @Post('delegations')
   createDelegation(@Req() req: AccessRequest, @Body() body: unknown) {

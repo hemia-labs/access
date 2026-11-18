@@ -63,6 +63,8 @@ function fixture(kind = 'assignment') {
     self: false,
   };
   const query = jest.fn((sql: string, args: unknown[] = []): unknown[] => {
+    if (sql.startsWith('SELECT a.id, a.version'))
+      return [{ id: id(5), version: 1, productCode: 'billing', targets: [] }];
     if (
       sql.startsWith('SELECT * FROM system_role_') &&
       sql.includes('FOR UPDATE')
@@ -310,22 +312,52 @@ describe('System role history transaction orchestration', () => {
     ).rejects.toMatchObject({ status: 403 });
     expect(f.outbox.record).not.toHaveBeenCalled();
   });
-  it('requires platform authority for direct Billing grants in authenticated mode', async () => {
-    const previous = process.env.HEMIA_AUTHORIZATION_MODE;
-    process.env.HEMIA_AUTHORIZATION_MODE = 'authenticated';
-    try {
-      const f = fixture();
-      f.options.platform = false;
-      const fields: Partial<typeof request> = { ...request };
-      delete fields.expectedVersion;
-      await expect(
-        f.service.createAssignment(actor, { ...fields, membershipId: id(2) }),
-      ).rejects.toMatchObject({ status: 403 });
-      expect(f.audit.record).not.toHaveBeenCalled();
-    } finally {
-      if (previous === undefined) delete process.env.HEMIA_AUTHORIZATION_MODE;
-      else process.env.HEMIA_AUTHORIZATION_MODE = previous;
-    }
+  it.each(['billing', 'legal'])(
+    'requires platform authority for direct %s grants in authenticated mode',
+    async (product) => {
+      const previous = process.env.HEMIA_AUTHORIZATION_MODE;
+      process.env.HEMIA_AUTHORIZATION_MODE = 'authenticated';
+      try {
+        const f = fixture();
+        f.options.platform = false;
+        const fields: Partial<typeof request> = { ...request };
+        delete fields.expectedVersion;
+        await expect(
+          f.service.createAssignment(actor, {
+            ...fields,
+            membershipId: id(2),
+            ...(product === 'legal'
+              ? {
+                  scopeType: 'legal_global',
+                  consumerScopeType: 'not_applicable',
+                  organizationIds: [],
+                  resourceIds: [],
+                }
+              : {}),
+          }),
+        ).rejects.toMatchObject({ status: 403 });
+        expect(f.audit.record).not.toHaveBeenCalled();
+      } finally {
+        if (previous === undefined) delete process.env.HEMIA_AUTHORIZATION_MODE;
+        else process.env.HEMIA_AUTHORIZATION_MODE = previous;
+      }
+    },
+  );
+  it('lists grants for the selected membership with their revocation version and targets', async () => {
+    const f = fixture();
+    await expect(f.service.listAssignments(actor, id(2))).resolves.toEqual([
+      { id: id(5), version: 1, productCode: 'billing', targets: [] },
+    ]);
+    expect(f.query).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE a.membership_id = $1 AND a.sealed'),
+      [id(2)],
+    );
+    f.options.platform = false;
+    f.query.mockClear();
+    await expect(f.service.listAssignments(actor, id(2))).rejects.toMatchObject(
+      { status: 403 },
+    );
+    expect(f.query).toHaveBeenCalledTimes(1);
   });
   it.each(['self', 'eligible'] as const)(
     'rejects self assignment and ineligible recipients: %s',
