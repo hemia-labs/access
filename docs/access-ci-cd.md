@@ -10,7 +10,8 @@ Identity conserva su pipeline, imagenes, datos y despliegue independientes.
    `changeset-release/main`. El script actualiza ambos package.json, changelogs y
    bun.lock; no publica paquetes npm.
 3. Fusionar la PR de version ejecuta tests, builds y smoke Docker antes de publicar.
-4. El runner entra a Tailscale mediante OIDC y publica las imagenes probadas:
+4. El runner entra a Tailscale mediante OIDC, espera a que el registry responda
+   por HTTPS y publica las imagenes probadas:
    `REGISTRY_HOST/access/api:access-vX.Y.Z` y `REGISTRY_HOST/access/web:access-vX.Y.Z`.
 5. Crea tag `access-vX.Y.Z` y Release `Access X.Y.Z`, con notas de ambos changelogs.
    Sus assets son `release.json`, `compose.json` y `access-deploy.py`.

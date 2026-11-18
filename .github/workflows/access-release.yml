@@ -127,6 +127,25 @@ jobs:
           oauth-client-id: ${{ vars.TS_CLIENT_ID }}
           audience: ${{ vars.TS_AUDIENCE }}
           tags: tag:hemia-ci
+          ping: ${{ vars.REGISTRY_HOST }}
+      - name: Wait for the private registry over HTTPS
+        env:
+          REGISTRY_HOST: ${{ vars.REGISTRY_HOST }}
+        run: |
+          set -euo pipefail
+          : "${REGISTRY_HOST:?Missing REGISTRY_HOST}"
+          for attempt in {1..10}; do
+            if status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+              --connect-timeout 5 --max-time 8 "https://$REGISTRY_HOST/v2/"); then
+              case "$status" in
+                200|401) echo "Registry HTTPS ready (HTTP $status)"; exit 0 ;;
+              esac
+            fi
+            echo "Registry HTTPS attempt $attempt returned ${status:-no response}" >&2
+            sleep 4
+          done
+          echo 'Private registry HTTPS did not become ready' >&2
+          exit 1
       - name: Publish images and immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
