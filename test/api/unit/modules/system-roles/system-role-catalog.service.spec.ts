@@ -264,6 +264,15 @@ describe('Billing v2 catalog publication', () => {
       published?.roles.find((role) => role.code === 'billing.webhook_viewer')
         ?.id,
     ).toBe('role-billing.webhook_viewer');
+    expect(
+      published?.roles.find((role) => role.code === 'billing.webhook_viewer')
+        ?.permissions,
+    ).toEqual(['billing.webhooks.read']);
+    expect(
+      (await service.list(actor))
+        .flatMap((catalog) => catalog.roles)
+        .every((role) => role.permissions.length > 0),
+    ).toBe(true);
     await expect(service.registerBillingV2(actor, {})).resolves.toMatchObject({
       catalogVersion: 2,
       replayed: true,

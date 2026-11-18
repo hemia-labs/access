@@ -84,6 +84,41 @@ export class SystemRoleHistoryService {
   createAssignment(actor: AccessActor, body: unknown) {
     return this.create('assignment', actor, prepare(body, 'assignment', true));
   }
+
+  listAssignments(actor: AccessActor, membershipId: string) {
+    return this.database.transaction('REPEATABLE READ', async (manager) => {
+      await requirePlatformAdministrator(manager, actor, true);
+      return manager.query<unknown[]>(
+        `SELECT a.id, a.version, p.code AS "productCode", r.id AS "roleId",
+            r.code AS "roleCode", r.name AS "roleName", r.catalog_version AS "catalogVersion",
+            a.scope_type AS "scopeType", a.consumer_scope_type AS "consumerScopeType",
+            a.valid_from AS "validFrom", a.expires_at AS "expiresAt",
+            CASE
+              WHEN a.delegation_id IS NOT NULL AND NOT (
+                d.sealed AND d.status = 'active' AND d.valid_from <= now()
+                AND (d.expires_at IS NULL OR d.expires_at > now())
+              ) THEN 'inactive_delegation'
+              WHEN a.valid_from > now() THEN 'scheduled'
+              ELSE 'active'
+            END AS status,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object(
+              'type', t.target_type, 'id', t.target_id, 'name', o.name
+            ) ORDER BY t.target_type, t.target_id)
+              FROM system_role_assignment_targets t
+              LEFT JOIN organizations o ON o.id = t.organization_id
+              WHERE t.assignment_id = a.id), '[]'::jsonb) AS targets
+           FROM system_role_assignments a
+           JOIN system_roles r ON r.id = a.role_id
+           JOIN products p ON p.id = r.product_id
+           LEFT JOIN system_role_delegations d ON d.id = a.delegation_id
+           WHERE a.membership_id = $1 AND a.sealed AND a.status = 'active'
+             AND (a.expires_at IS NULL OR a.expires_at > now())
+           ORDER BY p.code, r.code, a.valid_from DESC, a.id`,
+        [membershipId],
+      );
+    });
+  }
+
   createDelegation(actor: AccessActor, body: unknown) {
     return this.create('delegation', actor, prepare(body, 'delegation', true));
   }
@@ -412,12 +447,7 @@ export class SystemRoleHistoryService {
   ) {
     if (kind === 'delegation' || !authorityId) {
       if (kind === 'delegation' && authorityId) deny();
-      const billing = [
-        'catalog_global',
-        'all_customers',
-        'organizations',
-      ].includes(old.scope_type);
-      await requirePlatformAdministrator(manager, actor, billing);
+      await requirePlatformAdministrator(manager, actor, true);
       return;
     }
     const [authority] = await manager.query<Row[]>(
