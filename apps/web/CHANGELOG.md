@@ -1,5 +1,11 @@
 # web
 
+## 1.4.1
+
+### Patch Changes
+
+- c963edd: Exige el rol de administrador de plataforma para administrar asignaciones directas de Billing y devuelve los IDs de los roles de catálogos publicados.
+
 ## 1.4.0
 
 ## 1.3.1
