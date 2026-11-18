@@ -24,6 +24,7 @@ export default registerAs('access', () => {
 
   return {
     authorizationMode: authorizationMode(),
+    billingAuthorizationMode: authorizationMode('billing'),
     bindHost: process.env.ACCESS_BIND_HOST || undefined,
     legalServiceClientId: process.env.LEGAL_SERVICE_CLIENT_ID ?? '',
     port,

@@ -2,6 +2,10 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AccessActor } from '../../../../../apps/api/src/common/auth/access-actor.type';
 import { SystemRoleCatalogService } from '../../../../../apps/api/src/modules/system-roles/catalogs/system-role-catalog.service';
 import { legalRoleCatalogV2 } from '../../../../../apps/api/src/modules/system-roles/catalogs/legal-role-catalog';
+import {
+  billingRoleCatalog,
+  billingRoleCatalogV2,
+} from '../../../../../apps/api/src/modules/system-roles/catalogs/billing-role-catalog';
 
 const actor: AccessActor = {
   identityReferenceId: '10000000-0000-4000-8000-000000000001',
@@ -10,13 +14,24 @@ const actor: AccessActor = {
   identityType: 'workforce_user',
 };
 
-function setup(administrator = true, existing: unknown[] = []) {
+function setup(
+  administrator = true,
+  existing: unknown[] = [],
+  productCode = 'legal',
+) {
   const rows = (sql: string, parameters?: unknown[]) => {
     if (sql.includes('FROM organization_memberships'))
       return administrator ? [{ id: 'membership' }] : [];
-    if (sql.includes('SELECT id FROM products')) return [{ id: 'product' }];
+    if (sql.includes('SELECT id FROM products'))
+      return [
+        { id: parameters?.[0] === 'billing' ? 'billing-product' : 'product' },
+      ];
     if (sql.includes('SELECT r.*'))
-      return parameters?.[1] === 2 ? existing : [];
+      return parameters?.[1] === 2 &&
+        parameters?.[0] ===
+          (productCode === 'billing' ? 'billing-product' : 'product')
+        ? existing
+        : [];
     if (sql.includes('SELECT id,code,name,status FROM products'))
       return [
         { id: 'product', code: 'legal', name: 'Legal', status: 'active' },
@@ -176,6 +191,115 @@ describe('Legal v2 catalog publication', () => {
     });
     expect(() => service.registerLegalV2(actor, { roles: [] })).toThrow(
       'body must be empty',
+    );
+  });
+});
+
+describe('Billing v2 catalog publication', () => {
+  it('preserves v1 and adds only the global webhook reader in v2', async () => {
+    expect(billingRoleCatalog.catalog_version).toBe(1);
+    expect(billingRoleCatalog.roles).toHaveLength(6);
+    expect(billingRoleCatalogV2.contract_version).toBe(1);
+    expect(billingRoleCatalogV2.roles.slice(0, -1)).toEqual(
+      billingRoleCatalog.roles,
+    );
+    expect(billingRoleCatalogV2.roles.at(-1)).toEqual({
+      code: 'billing.webhook_viewer',
+      name: 'Consulta de webhooks',
+      allowed_scopes: ['all_customers'],
+    });
+    const { service, query, audit, outbox } = setup();
+    const catalogs = await service.list(actor);
+    expect(
+      catalogs
+        .filter((catalog) => catalog.productCode === 'billing')
+        .map((catalog) => catalog.version),
+    ).toEqual([1, 2]);
+    const result = await service.registerBillingV2(actor, {});
+    expect(result).toMatchObject({ catalogVersion: 2, replayed: false });
+    expect(result.roles).toHaveLength(billingRoleCatalogV2.roles.length);
+    const inserts = query.mock.calls.filter(([sql]) =>
+      sql.startsWith('INSERT INTO system_roles('),
+    );
+    expect(
+      inserts.every(([, values]) => values?.[3] === 1 && values?.[4] === 2),
+    ).toBe(true);
+    expect(query.mock.calls).toContainEqual([
+      expect.stringContaining('INSERT INTO system_role_scopes'),
+      [
+        'role-billing.webhook_viewer',
+        ['all_customers'],
+        ['not_applicable'],
+        'billing_v1',
+      ],
+    ]);
+    expect(
+      query.mock.calls.some(([sql]) =>
+        sql.includes('INSERT INTO system_role_assignments'),
+      ),
+    ).toBe(false);
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(outbox.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays v2 without altering v1 or creating another audit event', async () => {
+    const existing = billingRoleCatalogV2.roles.map((role) => ({
+      id: 'role-' + role.code,
+      code: role.code,
+      name: role.name,
+      contract_version: 1,
+      status: 'active',
+      sealed: true,
+      scope_profile: 'billing_v1',
+      scopes: role.allowed_scopes
+        .map((scope) => `${scope}:not_applicable`)
+        .sort(),
+    }));
+    const { service, query, audit, outbox } = setup(true, existing, 'billing');
+    expect(
+      (await service.list(actor)).find(
+        (catalog) => catalog.productCode === 'billing' && catalog.version === 2,
+      )?.publicationStatus,
+    ).toBe('published');
+    await expect(service.registerBillingV2(actor, {})).resolves.toMatchObject({
+      catalogVersion: 2,
+      replayed: true,
+      roles: existing.map(({ id, code }) => ({ id, code })),
+    });
+    expect(query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(
+      false,
+    );
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(outbox.record).not.toHaveBeenCalled();
+    expect((await service.registerBilling(actor, {})).catalogVersion).toBe(1);
+    expect(
+      query.mock.calls.filter(([sql]) =>
+        sql.startsWith('INSERT INTO system_roles('),
+      ),
+    ).toHaveLength(billingRoleCatalog.roles.length);
+  });
+
+  it('requires platform administrator authority and rejects custom or divergent artifacts', async () => {
+    const unauthorized = setup(false);
+    await expect(
+      unauthorized.service.registerBillingV2(actor, {}),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(
+      unauthorized.query.mock.calls.some(([sql]) => sql.startsWith('INSERT')),
+    ).toBe(false);
+    const { service, query } = setup(
+      true,
+      [{ code: 'billing.webhook_viewer' }],
+      'billing',
+    );
+    await expect(service.registerBillingV2(actor, {})).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(() => service.registerBillingV2(actor, { roles: [] })).toThrow(
+      'body must be empty',
+    );
+    expect(query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(
+      false,
     );
   });
 });

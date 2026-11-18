@@ -6,7 +6,10 @@ import { requirePlatformAdministrator } from '../../../common/auth/platform-admi
 import { AccessError } from '../../../common/errors/access-error';
 import { AuditService } from '../../audit/audit.service';
 import { OutboxService } from '../../outbox/outbox.service';
-import { billingRoleCatalog } from './billing-role-catalog';
+import {
+  billingRoleCatalog,
+  billingRoleCatalogV2,
+} from './billing-role-catalog';
 
 type Catalog = {
   product_code: string;
@@ -32,19 +35,23 @@ type StoredRole = {
   status: string;
   sealed: boolean;
 };
-const billingCatalog: Catalog = {
-  ...billingRoleCatalog,
+const [billingCatalog, billingCatalogV2] = [
+  billingRoleCatalog,
+  billingRoleCatalogV2,
+].map((catalog): Catalog => ({
+  ...catalog,
   scope_profile: 'billing_v1',
-  roles: billingRoleCatalog.roles.map((role) => ({
+  roles: catalog.roles.map((role) => ({
     ...role,
     allowed_scopes: role.allowed_scopes.map((scope_type: string) => ({
       scope_type,
       consumer_scope_type: 'not_applicable',
     })),
   })),
-};
+}));
 const availableCatalogs: Catalog[] = [
   billingCatalog,
+  billingCatalogV2,
   legalRoleCatalog,
   legalRoleCatalogV2,
 ];
@@ -82,6 +89,9 @@ export class SystemRoleCatalogService {
   ) {}
   registerBilling(actor: AccessActor, body: unknown) {
     return this.register(actor, body, billingCatalog);
+  }
+  registerBillingV2(actor: AccessActor, body: unknown) {
+    return this.register(actor, body, billingCatalogV2);
   }
   registerLegal(actor: AccessActor, body: unknown) {
     return this.register(actor, body, legalRoleCatalog);

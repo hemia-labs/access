@@ -29,6 +29,10 @@ export class SystemRoleHistoryController {
   registerBilling(@Req() req: AccessRequest, @Body() body: unknown) {
     return this.catalog.registerBilling(req.accessActor!, body);
   }
+  @Post('catalogs/billing/v2')
+  publishBillingV2(@Req() req: AccessRequest, @Body() body: unknown) {
+    return this.catalog.registerBillingV2(req.accessActor!, body);
+  }
   @Post('catalogs/legal/v2')
   publishLegalV2(@Req() req: AccessRequest, @Body() body: unknown) {
     return this.catalog.registerLegalV2(req.accessActor!, body);

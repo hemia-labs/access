@@ -28,12 +28,17 @@ const membership = {
 
 describe('Temporary authenticated action mode', () => {
   const previous = process.env.HEMIA_AUTHORIZATION_MODE;
+  const previousBilling = process.env.HEMIA_BILLING_AUTHORIZATION_MODE;
   beforeEach(() => {
     process.env.HEMIA_AUTHORIZATION_MODE = 'authenticated';
+    delete process.env.HEMIA_BILLING_AUTHORIZATION_MODE;
   });
   afterEach(() => {
     if (previous === undefined) delete process.env.HEMIA_AUTHORIZATION_MODE;
     else process.env.HEMIA_AUTHORIZATION_MODE = previous;
+    if (previousBilling === undefined)
+      delete process.env.HEMIA_BILLING_AUTHORIZATION_MODE;
+    else process.env.HEMIA_BILLING_AUTHORIZATION_MODE = previousBilling;
   });
   it('defaults to roles and rejects an unknown mode', () => {
     delete process.env.HEMIA_AUTHORIZATION_MODE;
