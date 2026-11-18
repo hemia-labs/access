@@ -1,5 +1,11 @@
 # api
 
+## 1.4.0
+
+### Minor Changes
+
+- edde18f: Publica el catálogo de Billing con lectura global de webhooks y permite activar el modo de roles de Billing desde Access.
+
 ## 1.3.1
 
 ### Patch Changes
