@@ -12,9 +12,10 @@ import { Role } from '../../modules/roles/entities/role.entity';
 export async function requirePlatformAdministrator(
   manager: EntityManager,
   actor: Pick<AccessActor, 'identityReferenceId' | 'identityType'>,
+  requireRole = false,
 ) {
   if (actor.identityType === 'service_account') throw forbidden();
-  if (authenticatedActions(actor)) {
+  if (!requireRole && authenticatedActions(actor)) {
     const eligible = await manager.query<Array<{ id: string }>>(
       `
       SELECT m.id FROM organization_memberships m
@@ -85,7 +86,7 @@ export async function protectRoleAssignment(
   )
     throw forbidden();
   if (role.scope === 'platform')
-    await requirePlatformAdministrator(manager, actor);
+    await requirePlatformAdministrator(manager, actor, true);
 }
 
 function forbidden() {
