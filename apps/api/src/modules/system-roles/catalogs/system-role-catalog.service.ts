@@ -116,6 +116,7 @@ export class SystemRoleCatalogService {
         contractVersion: number;
         publicationStatus: string;
         roles: Array<{
+          id?: string;
           code: string;
           name: string;
           allowedScopes: Array<{ resource: string; consumer: string }>;
@@ -143,6 +144,9 @@ export class SystemRoleCatalogService {
           contractVersion: catalog.contract_version,
           publicationStatus,
           roles: catalog.roles.map((role) => ({
+            ...(publicationStatus === 'published'
+              ? { id: stored.find((row) => row.code === role.code)!.id }
+              : {}),
             code: role.code,
             name: role.name,
             allowedScopes: role.allowed_scopes.map((scope) => ({

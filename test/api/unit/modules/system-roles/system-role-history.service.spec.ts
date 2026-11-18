@@ -98,6 +98,8 @@ function fixture(kind = 'assignment') {
           identity_type: 'workforce_user',
         },
       ];
+    if (sql.includes('m.id FROM organization_memberships'))
+      return [{ id: id(1) }];
     if (sql.startsWith('SELECT m.id'))
       return options.platform ? [{ id: id(1) }] : [];
     if (sql.startsWith('SELECT target_type'))
@@ -307,6 +309,23 @@ describe('System role history transaction orchestration', () => {
       f.service.replaceAssignment(actor, id(5), request),
     ).rejects.toMatchObject({ status: 403 });
     expect(f.outbox.record).not.toHaveBeenCalled();
+  });
+  it('requires platform authority for direct Billing grants in authenticated mode', async () => {
+    const previous = process.env.HEMIA_AUTHORIZATION_MODE;
+    process.env.HEMIA_AUTHORIZATION_MODE = 'authenticated';
+    try {
+      const f = fixture();
+      f.options.platform = false;
+      const fields: Partial<typeof request> = { ...request };
+      delete fields.expectedVersion;
+      await expect(
+        f.service.createAssignment(actor, { ...fields, membershipId: id(2) }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(f.audit.record).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.HEMIA_AUTHORIZATION_MODE;
+      else process.env.HEMIA_AUTHORIZATION_MODE = previous;
+    }
   });
   it.each(['self', 'eligible'] as const)(
     'rejects self assignment and ineligible recipients: %s',

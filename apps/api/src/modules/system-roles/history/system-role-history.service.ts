@@ -412,7 +412,12 @@ export class SystemRoleHistoryService {
   ) {
     if (kind === 'delegation' || !authorityId) {
       if (kind === 'delegation' && authorityId) deny();
-      await requirePlatformAdministrator(manager, actor);
+      const billing = [
+        'catalog_global',
+        'all_customers',
+        'organizations',
+      ].includes(old.scope_type);
+      await requirePlatformAdministrator(manager, actor, billing);
       return;
     }
     const [authority] = await manager.query<Row[]>(

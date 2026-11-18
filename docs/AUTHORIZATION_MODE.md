@@ -56,9 +56,11 @@ con `roleId` devuelto al publicar v2, la membresía destinataria, `scopeType:
 con el contrato existente. Usar la autoridad `platform_super_admin` vigente
 para publicación y asignación global; `organization_admin` o
 `organization_owner` por sí solos no conceden esa autoridad en modo `roles`.
-No usar la asignación de roles genéricos de organización como sustituto de una
-asignación de sistema. Console dispone de publicación de catálogos, pero su
-interfaz actual no expone la creación de estas asignaciones de sistema.
+El listado de catálogos devuelve los IDs de roles de las versiones publicadas.
+Las asignaciones directas de Billing y la gestión de roles de plataforma
+requieren `platform_super_admin` también en modo `authenticated`.
+Console usa las asignaciones de sistema para conservar la auditoría y la
+validación de Access.
 
 Preparar primero consumidores compatibles, publicar v2 y asignar explícitamente
 los operadores que conservarán acceso; después activar el modo Billing aislado

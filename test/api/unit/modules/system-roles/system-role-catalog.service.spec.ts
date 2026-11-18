@@ -256,11 +256,14 @@ describe('Billing v2 catalog publication', () => {
         .sort(),
     }));
     const { service, query, audit, outbox } = setup(true, existing, 'billing');
+    const published = (await service.list(actor)).find(
+      (catalog) => catalog.productCode === 'billing' && catalog.version === 2,
+    );
+    expect(published?.publicationStatus).toBe('published');
     expect(
-      (await service.list(actor)).find(
-        (catalog) => catalog.productCode === 'billing' && catalog.version === 2,
-      )?.publicationStatus,
-    ).toBe('published');
+      published?.roles.find((role) => role.code === 'billing.webhook_viewer')
+        ?.id,
+    ).toBe('role-billing.webhook_viewer');
     await expect(service.registerBillingV2(actor, {})).resolves.toMatchObject({
       catalogVersion: 2,
       replayed: true,
