@@ -1,5 +1,11 @@
 # api
 
+## 1.4.2
+
+### Patch Changes
+
+- 12be32e: Expone los permisos de los roles publicados y permite a los administradores de plataforma consultar las asignaciones por membresía. Aplica la misma autoridad a las operaciones directas de Billing y Legal, con los flujos de delegación existentes.
+
 ## 1.4.1
 
 ### Patch Changes
