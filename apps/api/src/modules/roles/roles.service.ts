@@ -179,7 +179,7 @@ export class RolesService {
       const role = await manager.getRepository(Role).findOneBy({ id: roleId });
       if (!role) throw this.notFound('Role not found');
       if (role.scope === 'platform')
-        await requirePlatformAdministrator(manager, actor, true);
+        await requirePlatformAdministrator(manager, actor);
       await manager
         .getRepository(MembershipRole)
         .delete({ membershipId, roleId });

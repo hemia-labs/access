@@ -1,4 +1,3 @@
-import { authenticatedActions } from './authorization-mode';
 import { HttpStatus } from '@nestjs/common';
 import type { DataSource } from 'typeorm';
 import type { AccessActor } from './access-actor.type';
@@ -22,21 +21,6 @@ export async function readableOrganizationIds(
       'Insufficient permission',
       HttpStatus.FORBIDDEN,
     );
-  }
-  if (authenticatedActions(actor)) {
-    const memberships = await dataSource.query<
-      Array<{ organization_id: string }>
-    >(
-      `
-      SELECT o.id AS organization_id FROM organizations o
-      JOIN identity_references i ON i.id=$1 AND i.status='active' AND i.identity_type<>'service_account'
-      WHERE (o.created_by_identity_id=i.id OR EXISTS (
-        SELECT 1 FROM organization_memberships m WHERE m.organization_id=o.id AND m.identity_reference_id=i.id
-          AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
-      ))`,
-      [actor.identityReferenceId],
-    );
-    return memberships.map((row) => row.organization_id);
   }
   const rows = await dataSource.query<
     Array<{

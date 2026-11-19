@@ -72,6 +72,8 @@ def create(tag, output):
         config['services'][service]['image'] = images[service]
     config['services']['api']['volumes'][0]['source'] = '${ACCESS_JWKS_PRIVATE_KEY_FILE:?Set the persistent signing key}'
     config['services']['api'].setdefault('environment', {})['ACCESS_ISSUER'] = '${ACCESS_PUBLIC_URL:?Set the public Access origin}'
+    config['services']['api'].setdefault('environment', {})['HEMIA_AUTHORIZATION_MODE'] = 'roles'
+    config['services']['api']['environment']['HEMIA_BILLING_AUTHORIZATION_MODE'] = 'roles'
     config['services']['api']['env_file'] = [{'path': '${ACCESS_ENV_FILE:?Set the server environment file}', 'format': 'raw'}]
     config['services']['web']['ports'] = ['${ACCESS_BIND_ADDRESS:-127.0.0.1}:${ACCESS_HTTP_PORT:-8081}:3000']
     (output / 'compose.json').write_text(json.dumps(config, indent=2) + '\n')

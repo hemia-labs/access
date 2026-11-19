@@ -199,6 +199,44 @@ describe('AccessContextService', () => {
     );
   });
 
+  it('only derives generic context permissions from valid grants of the selected organization', async () => {
+    const { service: accessContext, builder } = service([]);
+    await accessContext.context(actor, 'access');
+    expect(builder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('membership.expires_at > now()'),
+    );
+    expect(builder.leftJoin).toHaveBeenCalledWith(
+      expect.any(Function),
+      'role',
+      expect.stringContaining(
+        'role.organization_id = membership.organization_id',
+      ),
+    );
+    expect(builder.leftJoin).toHaveBeenCalledWith(
+      'organization_products',
+      'organization_product',
+      expect.stringContaining('organization_product.expires_at > now()'),
+    );
+  });
+
+  it('does not give permissions or roles to a member without role grants', async () => {
+    const { service: accessContext } = service([
+      { ...row('', ''), role_code: null, permission_code: null },
+    ]);
+    const context = await accessContext.context(actor);
+    expect(context.organizations[0]).toMatchObject({
+      roles: [],
+      permissions: [],
+    });
+    await expect(
+      accessContext.check(
+        actor,
+        '11111111-1111-4111-8111-111111111111',
+        'organization.update',
+      ),
+    ).resolves.toEqual({ allowed: false });
+  });
+
   it('returns a context token on resolve', async () => {
     const { service: accessContext } = service([
       row('engineering', 'organization.read'),
