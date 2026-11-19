@@ -298,7 +298,7 @@ export class AccessContextService {
       .leftJoin(
         Role,
         'role',
-        'role.id = membership_role.role_id AND role.status = :active',
+        'role.id = membership_role.role_id AND role.status = :active AND (role.organization_id IS NULL OR role.organization_id = membership.organization_id)',
       )
       .leftJoin(
         RolePermission,
@@ -313,7 +313,7 @@ export class AccessContextService {
       .leftJoin(
         'organization_products',
         'organization_product',
-        'organization_product.organization_id = organization.id AND organization_product.status = :enabled',
+        'organization_product.organization_id = organization.id AND organization_product.status = :enabled AND (organization_product.expires_at IS NULL OR organization_product.expires_at > now())',
       )
       .leftJoin(
         'products',
@@ -344,6 +344,9 @@ export class AccessContextService {
         identityReferenceId,
       })
       .andWhere('membership.status = :active', { active: 'active' })
+      .andWhere(
+        '(membership.expires_at IS NULL OR membership.expires_at > now())',
+      )
       .setParameter('enabled', 'enabled')
       .setParameter('requestedProductCode', productCode ?? '')
       .orderBy('organization.name', 'ASC');

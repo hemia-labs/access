@@ -87,7 +87,7 @@ export class SystemRoleHistoryService {
 
   listAssignments(actor: AccessActor, membershipId: string) {
     return this.database.transaction('REPEATABLE READ', async (manager) => {
-      await requirePlatformAdministrator(manager, actor, true);
+      await requirePlatformAdministrator(manager, actor);
       return manager.query<unknown[]>(
         `SELECT a.id, a.version, p.code AS "productCode", r.id AS "roleId",
             r.code AS "roleCode", r.name AS "roleName", r.catalog_version AS "catalogVersion",
@@ -447,7 +447,7 @@ export class SystemRoleHistoryService {
   ) {
     if (kind === 'delegation' || !authorityId) {
       if (kind === 'delegation' && authorityId) deny();
-      await requirePlatformAdministrator(manager, actor, true);
+      await requirePlatformAdministrator(manager, actor);
       return;
     }
     const [authority] = await manager.query<Row[]>(

@@ -36,19 +36,21 @@ try:
     if os.environ.get('BACKUP_CONFIRMATION') == 'I_HAVE_A_BACKUP':
         args.append('--backup-confirmed')
     # Apply the non-secret authorization setting through the dedicated deploy user.
-    # An unset CI variable preserves the existing host configuration.
-    mode = os.environ.get('HEMIA_AUTHORIZATION_MODE', '')
+    # Releases always apply explicit role authorization.
+    mode = os.environ.get('HEMIA_AUTHORIZATION_MODE') or 'roles'
     if mode:
-        if mode not in ('roles', 'authenticated'):
+        if mode != 'roles':
             raise ValueError('Invalid HEMIA_AUTHORIZATION_MODE')
         configure_mode = r"""import os,re,shutil,sys,tempfile
 from pathlib import Path
 from datetime import datetime,timezone
+if sys.argv[2] != 'roles':
+    raise ValueError('Only roles authorization is supported')
 p=Path(sys.argv[1])/'shared/production.env'
 if not p.is_file() or p.stat().st_mode & 0o077:
     raise ValueError('Expected private production.env')
 old=p.read_text()
-new=re.sub(r'^HEMIA_AUTHORIZATION_MODE=.*\n?', '', old, flags=re.M).rstrip()+'\nHEMIA_AUTHORIZATION_MODE='+sys.argv[2]+'\n'
+new=re.sub(r'^HEMIA_(?:BILLING_)?AUTHORIZATION_MODE=.*\n?', '', old, flags=re.M).rstrip()+'\nHEMIA_AUTHORIZATION_MODE=roles\nHEMIA_BILLING_AUTHORIZATION_MODE=roles\n'
 if old != new:
     backup=p.with_name('production.env.before-authmode-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     shutil.copy2(p,backup)

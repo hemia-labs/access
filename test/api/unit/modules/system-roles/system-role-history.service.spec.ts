@@ -313,34 +313,27 @@ describe('System role history transaction orchestration', () => {
     expect(f.outbox.record).not.toHaveBeenCalled();
   });
   it.each(['billing', 'legal'])(
-    'requires platform authority for direct %s grants in authenticated mode',
+    'requires platform authority for direct %s grants',
     async (product) => {
-      const previous = process.env.HEMIA_AUTHORIZATION_MODE;
-      process.env.HEMIA_AUTHORIZATION_MODE = 'authenticated';
-      try {
-        const f = fixture();
-        f.options.platform = false;
-        const fields: Partial<typeof request> = { ...request };
-        delete fields.expectedVersion;
-        await expect(
-          f.service.createAssignment(actor, {
-            ...fields,
-            membershipId: id(2),
-            ...(product === 'legal'
-              ? {
-                  scopeType: 'legal_global',
-                  consumerScopeType: 'not_applicable',
-                  organizationIds: [],
-                  resourceIds: [],
-                }
-              : {}),
-          }),
-        ).rejects.toMatchObject({ status: 403 });
-        expect(f.audit.record).not.toHaveBeenCalled();
-      } finally {
-        if (previous === undefined) delete process.env.HEMIA_AUTHORIZATION_MODE;
-        else process.env.HEMIA_AUTHORIZATION_MODE = previous;
-      }
+      const f = fixture();
+      f.options.platform = false;
+      const fields: Partial<typeof request> = { ...request };
+      delete fields.expectedVersion;
+      await expect(
+        f.service.createAssignment(actor, {
+          ...fields,
+          membershipId: id(2),
+          ...(product === 'legal'
+            ? {
+                scopeType: 'legal_global',
+                consumerScopeType: 'not_applicable',
+                organizationIds: [],
+                resourceIds: [],
+              }
+            : {}),
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(f.audit.record).not.toHaveBeenCalled();
     },
   );
   it('lists grants for the selected membership with their revocation version and targets', async () => {

@@ -1,8 +1,4 @@
 import {
-  authenticatedActions,
-  requireOrganizationAccess,
-} from './authorization-mode';
-import {
   CanActivate,
   ExecutionContext,
   HttpStatus,
@@ -233,14 +229,6 @@ export class AccessAuthGuard implements CanActivate {
     if (!requirement) return;
 
     const actor = request.accessActor!;
-    if (authenticatedActions(actor)) {
-      const value = request.params.organizationId;
-      const organizationId = Array.isArray(value) ? value[0] : value;
-      if (organizationId)
-        await requireOrganizationAccess(this.dataSource, actor, organizationId);
-      return;
-    }
-
     if (actor.identityType === 'service_account') {
       if (this.matches(actor.scopes ?? [], requirement.permission)) return;
     } else {
@@ -292,8 +280,10 @@ export class AccessAuthGuard implements CanActivate {
        JOIN permissions permission ON permission.id = role_permission.permission_id
        WHERE membership.identity_reference_id = $1
          AND membership.status = 'active'
+         AND (membership.expires_at IS NULL OR membership.expires_at > now())
          AND organization.status = 'active'
          AND role.status = 'active'
+         AND (role.organization_id IS NULL OR role.organization_id = membership.organization_id)
          AND permission.status = 'active'
          AND (membership_role.expires_at IS NULL OR membership_role.expires_at > now())
          AND ($2::uuid IS NULL OR membership.organization_id = $2::uuid)

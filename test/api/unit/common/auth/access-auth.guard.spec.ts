@@ -359,7 +359,7 @@ describe('AccessAuthGuard', () => {
   });
 
   it.each([true, false])(
-    'authorizes users by memberships: %s',
+    'requires current role grants despite human token roles and scopes: %s',
     async (allowed) => {
       const fetch = mockIntrospection();
       const database = {
@@ -387,6 +387,8 @@ describe('AccessAuthGuard', () => {
             sub: 'user-id',
             client_id: 'console-access-admin',
             scope: 'organization.read',
+            roles: ['platform_super_admin'],
+            permissions: ['*'],
             iat: now,
             exp: now + 600,
           })}`,
@@ -408,6 +410,16 @@ describe('AccessAuthGuard', () => {
         'workforce_user',
       );
       expect(request).not.toHaveProperty('accessActor.scopes');
+      expect(database.query).toHaveBeenCalledWith(
+        expect.stringContaining('membership.expires_at > now()'),
+        ['ref-id', null, true],
+      );
+      expect(database.query).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'role.organization_id = membership.organization_id',
+        ),
+        ['ref-id', null, true],
+      );
       expect(database.query).toHaveBeenCalled();
       expect(fetch).not.toHaveBeenCalledWith(
         'http://localhost:4000/oauth/introspect',
