@@ -33,12 +33,26 @@ jobs:
       - name: Build and publish QA images to the private registry
         env:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          REGISTRY_SSH_KEY: ${{ secrets.REGISTRY_SSH_KEY }}
+          REGISTRY_SSH_KNOWN_HOSTS: ${{ vars.REGISTRY_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           registry=registry.hemia.cloud
           export DOCKER_CONFIG="$RUNNER_TEMP/qa-registry"
           install -d -m 700 "$DOCKER_CONFIG"
-          trap 'rm -rf -- "$DOCKER_CONFIG"' EXIT
+          tunnel="$RUNNER_TEMP/qa-registry-ssh"
+          install -d -m 700 "$tunnel"
+          trap 'sudo -n ssh -S "$tunnel/socket" -O exit "$registry" 2>/dev/null || true; rm -rf -- "$tunnel" "$DOCKER_CONFIG"' EXIT
+          : "${REGISTRY_SSH_KEY:?Missing QA registry SSH key}" "${REGISTRY_SSH_KNOWN_HOSTS:?Missing QA registry SSH host key}"
+          (umask 077; printf '%s\n' "$REGISTRY_SSH_KEY" > "$tunnel/key")
+          printf '%s\n' "$REGISTRY_SSH_KNOWN_HOSTS" > "$tunnel/known_hosts"
+          sudo -n ssh -fN -M -S "$tunnel/socket" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$tunnel/known_hosts" -o ExitOnForwardFailure=yes \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 \
+            -i "$tunnel/key" -L 127.0.0.2:443:127.0.0.1:17427 "hemia-qa-registry-ci@$registry"
+          printf '127.0.0.2 %s\n' "$registry" | sudo -n tee -a /etc/hosts >/dev/null
+          test "$(getent ahostsv4 "$registry" | awk 'NR==1 {print $1}')" = 127.0.0.2
           printf '%s' "$REGISTRY_PASSWORD" |
             docker login "$registry" --username hemia-qa-ci --password-stdin
           build_image() {
