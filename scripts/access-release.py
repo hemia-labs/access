@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 
-TAG = re.compile(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
+TAG = re.compile(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-g[a-f0-9]{40})?\Z')
 DEFAULT_REGISTRY = 'registry.tail41610c.ts.net'
 
 
@@ -32,6 +32,9 @@ def validate(directory, expected_tag=None, registry_host=None):
         for name, value in manifest['migrations'].items()
     ):
         raise ValueError('Invalid migration manifest')
+    expected_commit = manifest.get('commit', '')
+    if '-g' in manifest['tag'] and manifest['tag'].split('-g', 1)[1] != expected_commit:
+        raise ValueError('Deployment tag differs from its commit')
     if manifest.get('registry') != registry_host:
         raise ValueError('Release uses an unexpected registry')
     for service in ['api', 'web']:
