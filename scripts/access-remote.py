@@ -1,4 +1,4 @@
-"""Transfer a verified release and invoke its controller over pinned-host SSH."""
+"""Transfer a verified release and invoke the main-branch controller over pinned-host SSH."""
 import os
 from pathlib import Path
 import re
@@ -30,7 +30,7 @@ if not re.fullmatch(r'/tmp/access-release\.[a-zA-Z0-9]+', remote):
 try:
     files = [str(Path(bundle) / name) for name in ['release.json', 'compose.json', 'access-deploy.py']]
     subprocess.run(['scp', *ssh_options, '-P', str(port), *files, target + ':' + remote + '/'], check=True)
-    args = ['python3', remote + '/access-deploy.py', operation, '--root', root, '--bundle', remote]
+    args = ['python3', '-', operation, '--root', root, '--bundle', remote]
     if os.environ.get('ACKNOWLEDGE_SCHEMA') == 'true':
         args.append('--acknowledge-schema')
     if os.environ.get('BACKUP_CONFIRMATION') == 'I_HAVE_A_BACKUP':
@@ -109,6 +109,8 @@ if new!=old:
 print('AMQP hostname configured; credentials and port preserved')
 """
         subprocess.run(ssh + [shlex.join(['python3', '-c', configure_amqp, root, amqp_host])], check=True)
-    subprocess.run(ssh + [shlex.join(args)], check=True)
+    # Use the current controller so stable rollback can read commit deployment manifests.
+    controller = Path(__file__).with_name('access-deploy.py').read_bytes()
+    subprocess.run(ssh + [shlex.join(args)], input=controller, check=True)
 finally:
     subprocess.run(ssh + [shlex.join(['rm', '-rf', '--', remote])], check=False)
