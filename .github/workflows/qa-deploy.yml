@@ -1,0 +1,92 @@
+name: Access QA deployment
+run-name: Deploy Access QA at ${{ github.sha }}
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: access-qa
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.repository == 'hemia-labs/access'
+    uses: ./.github/workflows/access-ci.yml
+
+  build:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      artifact: ${{ steps.artifact.outputs.name }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Apply the QA compatibility patch
+        run: git apply .github/qa/runtime.patch
+      - name: Build and publish QA images
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null 2>&1' EXIT
+          build_image() {
+            local service=$1 dockerfile=$2 name digest
+            shift 2
+            name="ghcr.io/hemia-labs/access/qa-${service}"
+            docker buildx build --platform linux/amd64 --push \
+              --file "$dockerfile" --metadata-file "$RUNNER_TEMP/${service}.json" \
+              --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              --tag "$name:$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "$@" .
+            digest=$(jq -er '."containerimage.digest" | select(test("^sha256:[a-f0-9]{64}$"))' "$RUNNER_TEMP/${service}.json")
+            jq --arg service "$service" --arg ref "$name@$digest" '. + {($service): $ref}' images.json > images.tmp
+            mv images.tmp images.json
+          }
+          echo '{}' > images.json
+          build_image api apps/api/Dockerfile
+          build_image access-web apps/web/Dockerfile
+      - name: Name the image manifest
+        id: artifact
+        run: echo "name=qa-images-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: images.json
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    needs: build
+    if: github.repository == 'hemia-labs/access' && github.ref == 'refs/heads/develop'
+    runs-on:
+      group: Hemia QA Deploy
+      labels: hemia-apps-qa
+    environment:
+      name: qa
+      url: https://access-qa.hemia.cloud
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+      - name: Update Access QA on Proxmox
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          jq -c --arg app 'access' --arg actor "$GITHUB_ACTOR" \
+            '{app: $app, actor: $actor, token: env.REGISTRY_TOKEN, images: .}' images.json |
+            sudo -n /usr/local/sbin/hemia-qa-deploy

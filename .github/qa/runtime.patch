@@ -1,0 +1,142 @@
+diff --git a/apps/api/src/common/auth/access-auth.guard.ts b/apps/api/src/common/auth/access-auth.guard.ts
+index 517fabc..01eab33 100644
+--- a/apps/api/src/common/auth/access-auth.guard.ts
++++ b/apps/api/src/common/auth/access-auth.guard.ts
+@@ -133,7 +133,7 @@ export class AccessAuthGuard implements CanActivate {
+ 
+     return {
+       identityReferenceId: identity.id,
+-      issuer: identity.issuer,
++      issuer: trusted.issuer,
+       subjectId: identity.subjectId,
+       identityType: identity.identityType,
+     };
+@@ -213,7 +213,7 @@ export class AccessAuthGuard implements CanActivate {
+ 
+     return {
+       identityReferenceId: identity.id,
+-      issuer: identity.issuer,
++      issuer: introspection.issuer,
+       subjectId: identity.subjectId,
+       identityType: identity.identityType,
+       scopes: this.scopes(result.scope),
+diff --git a/apps/api/src/common/auth/identity-reference-issuer.ts b/apps/api/src/common/auth/identity-reference-issuer.ts
+new file mode 100644
+index 0000000..aafab39
+--- /dev/null
++++ b/apps/api/src/common/auth/identity-reference-issuer.ts
+@@ -0,0 +1,6 @@
++export function identityReferenceIssuer(issuer: string): string {
++  const directoryIssuer = process.env.IDENTITY_REFERENCE_ISSUER?.trim();
++  return directoryIssuer && issuer === process.env.IDENTITY_ISSUER
++    ? directoryIssuer
++    : issuer;
++}
+diff --git a/apps/api/src/modules/access-context/access-context.service.ts b/apps/api/src/modules/access-context/access-context.service.ts
+index f62debe..63faa7c 100644
+--- a/apps/api/src/modules/access-context/access-context.service.ts
++++ b/apps/api/src/modules/access-context/access-context.service.ts
+@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { Repository } from 'typeorm';
+ import { AccessActor } from '../../common/auth/access-actor.type';
++import { identityReferenceIssuer } from '../../common/auth/identity-reference-issuer';
+ import { AccessError } from '../../common/errors/access-error';
+ import { Membership } from '../memberships/entities/membership.entity';
+ import { MembershipRole } from '../roles/entities/membership-role.entity';
+@@ -218,7 +219,11 @@ export class AccessContextService {
+         AND i.identity_type IN ('workforce_user','customer_user') AND o.status='active'
+         AND m.status='active' AND (m.expires_at IS NULL OR m.expires_at>now())
+         AND op.status='enabled' AND (op.expires_at IS NULL OR op.expires_at>now())`,
+-      [input.organization_id, input.identity_issuer, input.subject_id],
++      [
++        input.organization_id,
++        identityReferenceIssuer(input.identity_issuer),
++        input.subject_id,
++      ],
+     );
+     if (rows.length !== 1)
+       throw new AccessError(
+diff --git a/apps/api/src/modules/access-context/authorization/console-authorization.service.ts b/apps/api/src/modules/access-context/authorization/console-authorization.service.ts
+index 7614926..39449d5 100644
+--- a/apps/api/src/modules/access-context/authorization/console-authorization.service.ts
++++ b/apps/api/src/modules/access-context/authorization/console-authorization.service.ts
+@@ -2,6 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
+ import { randomUUID } from 'node:crypto';
+ import { DataSource } from 'typeorm';
+ import { AccessActor } from '../../../common/auth/access-actor.type';
++import { identityReferenceIssuer } from '../../../common/auth/identity-reference-issuer';
+ import { AccessError } from '../../../common/errors/access-error';
+ import { AccessJwksService } from '../jwks/access-jwks.service';
+ 
+@@ -66,7 +67,7 @@ export class ConsoleAuthorizationService {
+       [
+         organizationId,
+         actor.identityReferenceId,
+-        actor.issuer,
++        identityReferenceIssuer(actor.issuer),
+         actor.subjectId,
+       ],
+     );
+diff --git a/apps/api/src/modules/access-context/authorization/system-authorization.service.ts b/apps/api/src/modules/access-context/authorization/system-authorization.service.ts
+index 88548a9..112692a 100644
+--- a/apps/api/src/modules/access-context/authorization/system-authorization.service.ts
++++ b/apps/api/src/modules/access-context/authorization/system-authorization.service.ts
+@@ -6,6 +6,7 @@ import { Injectable } from '@nestjs/common';
+ import { DataSource } from 'typeorm';
+ import { randomUUID } from 'node:crypto';
+ import { AccessActor } from '../../../common/auth/access-actor.type';
++import { identityReferenceIssuer } from '../../../common/auth/identity-reference-issuer';
+ import { AccessError } from '../../../common/errors/access-error';
+ import { AccessJwksService } from '../jwks/access-jwks.service';
+ 
+@@ -214,7 +215,7 @@ export class SystemAuthorizationService {
+       ORDER BY o.id,a.id LIMIT ${BILLING_MAX_ASSIGNMENTS + 1}`,
+       [
+         actor.identityReferenceId,
+-        actor.issuer,
++        identityReferenceIssuer(actor.issuer),
+         actor.subjectId,
+         organizationId ?? null,
+         productCode,
+diff --git a/apps/api/src/modules/identity-references/identity-references.service.ts b/apps/api/src/modules/identity-references/identity-references.service.ts
+index ae98f62..92ad04a 100644
+--- a/apps/api/src/modules/identity-references/identity-references.service.ts
++++ b/apps/api/src/modules/identity-references/identity-references.service.ts
+@@ -1,6 +1,7 @@
+ import { HttpStatus, Injectable } from '@nestjs/common';
+ import { InjectRepository } from '@nestjs/typeorm';
+ import { Repository } from 'typeorm';
++import { identityReferenceIssuer } from '../../common/auth/identity-reference-issuer';
+ import { AccessError } from '../../common/errors/access-error';
+ import {
+   IdentityReference,
+@@ -35,8 +36,9 @@ export class IdentityReferencesService {
+   }
+ 
+   async findOrCreateFromClaims(input: ClaimsInput) {
++    const issuer = identityReferenceIssuer(input.issuer);
+     const existing = await this.repository.findOne({
+-      where: { issuer: input.issuer, subjectId: input.subjectId },
++      where: { issuer, subjectId: input.subjectId },
+     });
+ 
+     if (existing) {
+@@ -61,7 +63,7 @@ export class IdentityReferencesService {
+     try {
+       return await this.repository.save(
+         this.repository.create({
+-          issuer: input.issuer,
++          issuer,
+           subjectId: input.subjectId,
+           identityType: input.identityType,
+           emailSnapshot: input.email,
+@@ -74,7 +76,7 @@ export class IdentityReferencesService {
+     } catch (error) {
+       if (this.isUniqueViolation(error)) {
+         const identity = await this.repository.findOneByOrFail({
+-          issuer: input.issuer,
++          issuer,
+           subjectId: input.subjectId,
+         });
+         this.assertIdentityType(identity, input.identityType);
