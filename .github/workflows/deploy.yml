@@ -10,6 +10,9 @@ on:
       release_tag:
         type: string
         required: true
+      commit_bundle:
+        type: string
+        default: ''
       automatic:
         type: boolean
         default: false
@@ -102,6 +105,7 @@ jobs:
           TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
           PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          COMMIT_BUNDLE: ${{ inputs.commit_bundle }}
           OPERATION: ${{ inputs.operation }}
           BACKUP_CONFIRMATION: ${{ inputs.backup_confirmation }}
         run: |
@@ -111,12 +115,20 @@ jobs:
           assert os.environ['ENABLE_DEPLOY'] == 'true', 'Set ENABLE_ACCESS_DEPLOY=true after provisioning'
           for key in ['REGISTRY_HOST','DEPLOY_HOST','DEPLOY_USER','DEPLOY_PATH','TS_CLIENT_ID','TS_AUDIENCE','PRIVATE_KEY','KNOWN_HOSTS']:
               assert os.environ.get(key), 'Missing configuration: ' + key
-          assert re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', os.environ['RELEASE_TAG'])
+          if os.environ['COMMIT_BUNDLE']:
+              assert os.environ['OPERATION'] == 'deploy'
+              assert re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-g' + os.environ['GITHUB_SHA'], os.environ['RELEASE_TAG'])
+          else:
+              assert re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', os.environ['RELEASE_TAG'])
           if os.environ['OPERATION'] == 'migrate':
               assert os.environ['BACKUP_CONFIRMATION'] == 'I_HAVE_A_BACKUP', 'Verify backup before migrating'
           for name,value in [('DEPLOY_KEY_FILE','PRIVATE_KEY'),('DEPLOY_KNOWN_HOSTS_FILE','KNOWN_HOSTS')]:
               path=Path(os.environ[name]); path.write_text(os.environ[value]+'\n'); path.chmod(0o600)
           PY
+      - name: Download and verify the published release
+        if: inputs.commit_bundle == ''
+        run: |
+          set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
             --jq 'if .draft or .prerelease or (.immutable != true) then error("Expected a published immutable stable release") else .tag_name end'
           gh release download "$RELEASE_TAG" --dir "$RUNNER_TEMP/access-release" \
@@ -131,6 +143,23 @@ jobs:
           commit=subprocess.check_output(['git','rev-parse',os.environ['RELEASE_TAG']+'^{commit}'],text=True).strip()
           assert commit == manifest['commit'], 'Tag and release commit differ'
           PY
+      - name: Download the commit deployment bundle
+        if: inputs.commit_bundle != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.commit_bundle }}
+          path: ${{ runner.temp }}/access-release
+      - name: Verify the bundle belongs to this main commit
+        if: inputs.commit_bundle != ''
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/main
+          test "${RELEASE_TAG##*-g}" = "$GITHUB_SHA"
+          python3 scripts/access-release.py validate "$RELEASE_TAG" "$RUNNER_TEMP/access-release"
+          jq -e --arg sha "$GITHUB_SHA" '.commit == $sha' "$RUNNER_TEMP/access-release/release.json" >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$GITHUB_SHA" ||
+            { echo 'Retry from the current main commit to avoid deploying an older build.' >&2; exit 1; }
       - name: Join Tailscale with GitHub OIDC
         uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4
         with:

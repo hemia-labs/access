@@ -18,10 +18,12 @@ def read_manifest(directory, registry_host='registry.tail41610c.ts.net'):
         raise ValueError('Invalid registry hostname')
     directory = Path(directory)
     data = json.loads((directory / 'release.json').read_text())
-    if data.get('schema') != 1 or not re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', data.get('tag', '')):
+    if data.get('schema') != 1 or not re.fullmatch(r'access-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-g[a-f0-9]{40})?', data.get('tag', '')):
         raise ValueError('Invalid Access release')
     if not re.fullmatch('[a-f0-9]{40}', data.get('commit', '')):
         raise ValueError('Invalid commit')
+    if '-g' in data['tag'] and data['tag'].split('-g', 1)[1] != data['commit']:
+        raise ValueError('Deployment tag differs from its commit')
     if not isinstance(data.get('migrations'), dict) or any(
         not re.fullmatch(r'[A-Za-z0-9_-]+\.ts', name) or not re.fullmatch('[a-f0-9]{64}', value)
         for name, value in data['migrations'].items()
@@ -50,7 +52,7 @@ def schema_compatible(left, right):
 
 
 def version(tag):
-    return tuple(map(int, tag.removeprefix('access-v').split('.')))
+    return tuple(map(int, tag.removeprefix('access-v').split('-g', 1)[0].split('.')))
 
 
 def link(root, name, target):
@@ -100,7 +102,9 @@ def perform(root, bundle, operation, acknowledge_schema=False, backup_confirmed=
     if old:
         if operation == 'deploy' and version(incoming['tag']) < version(old['tag']):
             raise ValueError('Use rollback to deploy an older release')
-        if operation == 'rollback' and version(incoming['tag']) >= version(old['tag']):
+        same_version_stable = (version(incoming['tag']) == version(old['tag'])
+                               and '-g' not in incoming['tag'] and '-g' in old['tag'])
+        if operation == 'rollback' and version(incoming['tag']) >= version(old['tag']) and not same_version_stable:
             raise ValueError('Rollback must select an older release')
         if operation == 'rollback' and not schema_compatible(old, incoming) and not acknowledge_schema:
             raise ValueError('Migration sets differ: review schema compatibility and explicitly acknowledge')
