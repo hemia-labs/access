@@ -21,28 +21,30 @@ jobs:
     needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    environment: qa
     outputs:
       artifact: ${{ steps.artifact.outputs.name }}
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Apply the QA compatibility patch
         run: git apply .github/qa/runtime.patch
-      - name: Build and publish QA images
+      - name: Build and publish QA images to the private registry
         env:
-          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
           set -euo pipefail
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          trap 'docker logout ghcr.io >/dev/null 2>&1' EXIT
+          registry=registry.hemia.cloud
+          export DOCKER_CONFIG="$RUNNER_TEMP/qa-registry"
+          install -d -m 700 "$DOCKER_CONFIG"
+          trap 'rm -rf -- "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$REGISTRY_PASSWORD" |
+            docker login "$registry" --username hemia-qa-ci --password-stdin
           build_image() {
             local service=$1 dockerfile=$2 name digest
             shift 2
-            name="ghcr.io/hemia-labs/access/qa-${service}"
+            name="$registry/hemia-qa/access/$service"
             docker buildx build --platform linux/amd64 --push \
               --file "$dockerfile" --metadata-file "$RUNNER_TEMP/${service}.json" \
               --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
@@ -75,18 +77,13 @@ jobs:
       name: qa
       url: https://access-qa.hemia.cloud
     timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: read
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ needs.build.outputs.artifact }}
       - name: Update Access QA on Proxmox
-        env:
-          REGISTRY_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          jq -c --arg app 'access' --arg actor "$GITHUB_ACTOR" \
-            '{app: $app, actor: $actor, token: env.REGISTRY_TOKEN, images: .}' images.json |
+          jq -c --arg app 'access' \
+            '{app: $app, images: .}' images.json |
             sudo -n /usr/local/sbin/hemia-qa-deploy
